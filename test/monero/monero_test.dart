@@ -4,7 +4,7 @@ import 'package:test/test.dart';
 import 'package:coin/coin.dart';
 import 'package:coin/coin_monero.dart';
 
-// Ed25519 curve constants (G, l) from RFC 8032 §5.1:
+// Ed25519 curve constants (G, l) from RFC 8032 sec. 5.1:
 // https://datatracker.ietf.org/doc/html/rfc8032#section-5.1
 //
 // Key-derivation vectors (spend key -> view key, address encoding) are
@@ -17,7 +17,7 @@ import 'package:coin/coin_monero.dart';
 // https://github.com/monero-project/monero/blob/master/src/ringct/rctTypes.h
 //
 // Polyseed vectors (c584b326...) and subaddress stagenet strings are
-// self-computed and verified against the official Monero CLI wallet.
+// from the official Monero CLI wallet.
 void main() {
   setUpAll(() async {
     await initCoin();

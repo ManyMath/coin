@@ -13,6 +13,10 @@ class SoftDigestGate implements DigestGate {
       Uint8List.fromList(crypto.sha256.convert(data).bytes);
 
   @override
+  Uint8List sha512(Uint8List data) =>
+      Uint8List.fromList(crypto.sha512.convert(data).bytes);
+
+  @override
   Uint8List sha256d(Uint8List data) => sha256(sha256(data));
 
   @override

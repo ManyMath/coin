@@ -12,8 +12,8 @@ void main() {
   // (Satoshi to Hal Finney, 2009-01-12).
   // https://blockstream.info/tx/f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16
   // The prevScript is the block-9 coinbase P2PK output that this tx spends.
-  // Sighash digest 7a05c614... is self-computed; verified against Bitcoin Core
-  // SignatureHash() and the on-chain DER signature embedded in the scriptSig.
+  // Sighash digest 7a05c614... matches Bitcoin Core SignatureHash() and the
+  // on-chain DER signature embedded in the scriptSig.
   group('LegacySigHasher', () {
     // Block 170: f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16
     const rawHex =

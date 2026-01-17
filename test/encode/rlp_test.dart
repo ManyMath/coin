@@ -231,7 +231,7 @@ void main() {
   });
 
   // Vectors from the Ethereum Yellow Paper, Appendix B.
-  // https://github.com/ethereum/yellowpaper  (Paper.tex, §B)
+  // https://github.com/ethereum/yellowpaper  (Paper.tex, sec. B)
   // Also mirrored at https://github.com/ethereum/wiki/wiki/RLP
   group('Known Ethereum RLP test vectors', () {
     test('encode empty string ""', () {

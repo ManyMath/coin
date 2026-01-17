@@ -12,7 +12,7 @@ void main() {
   // test; its compressed pubkey 0279be66... is deterministic from the curve.
   // Key e8f32e... is the BIP-32 Test Vector 1 m/0' child key:
   // https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki
-  // Half-order constant: secp256k1 n/2 per SEC 2 §2.4.1.
+  // Half-order constant: secp256k1 n/2 per SEC 2 sec. 2.4.1.
   group('ECDSA key generation', () {
     test('generate SecretKey and derive PublicKey', () {
       final sk = SecretKey.generate();

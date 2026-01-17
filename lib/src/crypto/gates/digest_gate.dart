@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 abstract class DigestGate {
   Uint8List sha256(Uint8List data);
+  Uint8List sha512(Uint8List data);
   Uint8List sha256d(Uint8List data);
   Uint8List ripemd160(Uint8List data);
   Uint8List hash160(Uint8List data);
