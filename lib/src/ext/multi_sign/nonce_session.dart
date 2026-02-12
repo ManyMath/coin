@@ -103,8 +103,14 @@ class NonceSession {
   }
 
   /// BIP-327 NonceAgg: sum each participant's R1 and R2, then
-  /// b = H("MuSig/noncecoef", R1 || R2 || aggpk || msg) mod n,
-  /// R = R1 + b*R2. Returns 33-byte compressed R.
+  /// b = H("MuSig/noncecoef", R1_agg || R2_agg || Q_x || msg) mod n,
+  /// R = R1_agg + b*R2_agg (or G if R = infinity). Returns 33-byte compressed R.
+  ///
+  /// Per BIP-327 sec. GetSessionValues the noncecoef hash input is
+  /// aggnonce (R1_agg || R2_agg) || x-only aggregate key || message - the message
+  /// IS included (its omission was the cause of the non-empty-message vector
+  /// failures). infinity is serialised as 33 zero bytes in the hash input and, if the
+  /// final R is infinity, it is replaced by the generator G.
   Uint8List aggregateNonces() {
     if (nonces.isEmpty) {
       throw StateError('No nonces have been collected');
@@ -118,25 +124,29 @@ class NonceSession {
       aggR2 = ecPointAdd(aggR2, ecBytesToPoint(nonce.r2));
     }
 
-    if (aggR1.isInfinity) {
-      throw StateError('Aggregated R1 is the point at infinity');
-    }
+    // Serialise infinity as 33 zero bytes per BIP-327.
+    final aggR1Bytes = aggR1.isInfinity
+        ? Uint8List(33)
+        : ecPointToBytes(aggR1, compressed: true);
+    final aggR2Bytes = aggR2.isInfinity
+        ? Uint8List(33)
+        : ecPointToBytes(aggR2, compressed: true);
 
-    final bInput = concatBytes([
-      ecPointToBytes(aggR1, compressed: true),
-      ecPointToBytes(aggR2, compressed: true),
-      aggKey.xOnly,
-      message,
-    ]);
+    final bInput =
+        concatBytes([aggR1Bytes, aggR2Bytes, aggKey.xOnly, message]);
     final bHash = taggedHash('MuSig/noncecoef', bInput);
     final b = bytesToBigInt(bHash) % secp256k1N;
 
-    // R = R1 + b * R2
-    final bR2 = ecScalarMult(b, aggR2);
-    final aggR = ecPointAdd(aggR1, bR2);
-
-    if (aggR.isInfinity) {
-      throw StateError('Aggregated nonce R is the point at infinity');
+    // R = R1 + b*R2; if R = infinity use G.
+    EcPoint aggR;
+    if (aggR1.isInfinity && aggR2.isInfinity) {
+      aggR = secp256k1G;
+    } else if (aggR2.isInfinity) {
+      aggR = aggR1.isInfinity ? secp256k1G : aggR1;
+    } else {
+      final bR2 = ecScalarMult(b, aggR2);
+      final candidate = aggR1.isInfinity ? bR2 : ecPointAdd(aggR1, bR2);
+      aggR = candidate.isInfinity ? secp256k1G : candidate;
     }
 
     return ecPointToBytes(aggR, compressed: true);

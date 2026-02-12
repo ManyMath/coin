@@ -45,12 +45,12 @@ class PartialSig {
       aggR1 = ecPointAdd(aggR1, ecBytesToPoint(nonce.r1));
       aggR2 = ecPointAdd(aggR2, ecBytesToPoint(nonce.r2));
     }
-    final bInput = concatBytes([
-      ecPointToBytes(aggR1, compressed: true),
-      ecPointToBytes(aggR2, compressed: true),
-      session.aggKey.xOnly,
-      session.message,
-    ]);
+    // BIP-327 sec. GetSessionValues: noncecoef DOES include the message (b is
+    // hashed over aggnonce || Q_x || msg).
+    final aggR1Bytes = aggR1.isInfinity ? Uint8List(33) : ecPointToBytes(aggR1, compressed: true);
+    final aggR2Bytes = aggR2.isInfinity ? Uint8List(33) : ecPointToBytes(aggR2, compressed: true);
+    final bInput = concatBytes(
+        [aggR1Bytes, aggR2Bytes, session.aggKey.xOnly, session.message]);
     final bHash = taggedHash('MuSig/noncecoef', bInput);
     final b = bytesToBigInt(bHash) % secp256k1N;
 
@@ -100,12 +100,12 @@ class PartialSig {
       aggR1 = ecPointAdd(aggR1, ecBytesToPoint(nonce.r1));
       aggR2 = ecPointAdd(aggR2, ecBytesToPoint(nonce.r2));
     }
-    final bInput = concatBytes([
-      ecPointToBytes(aggR1, compressed: true),
-      ecPointToBytes(aggR2, compressed: true),
-      session.aggKey.xOnly,
-      session.message,
-    ]);
+    // BIP-327 sec. GetSessionValues: noncecoef DOES include the message (b is
+    // hashed over aggnonce || Q_x || msg).
+    final vR1Bytes = aggR1.isInfinity ? Uint8List(33) : ecPointToBytes(aggR1, compressed: true);
+    final vR2Bytes = aggR2.isInfinity ? Uint8List(33) : ecPointToBytes(aggR2, compressed: true);
+    final bInput = concatBytes(
+        [vR1Bytes, vR2Bytes, session.aggKey.xOnly, session.message]);
     final bHash = taggedHash('MuSig/noncecoef', bInput);
     final b = bytesToBigInt(bHash) % secp256k1N;
 

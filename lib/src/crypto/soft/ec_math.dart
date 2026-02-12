@@ -133,16 +133,33 @@ EcPoint ecBytesToPoint(Uint8List bytes) {
   if (bytes.length == 65 && bytes[0] == 0x04) {
     final x = bytesToBigInt(bytes.sublist(1, 33));
     final y = bytesToBigInt(bytes.sublist(33, 65));
+    // Reject coordinates outside the field or a point not on y^2 = x^3 + 7.
+    if (x >= secp256k1P || y >= secp256k1P || !_isOnCurve(x, y)) {
+      throw ArgumentError('Public key is not a valid curve point');
+    }
     return EcPoint(x, y);
   } else if (bytes.length == 33 && (bytes[0] == 0x02 || bytes[0] == 0x03)) {
     final x = bytesToBigInt(bytes.sublist(1, 33));
+    // An x >= field size cannot encode a curve point.
+    if (x >= secp256k1P) {
+      throw ArgumentError('Public key x-coordinate exceeds the field size');
+    }
     final alpha = (x * x * x + BigInt.from(7)) % secp256k1P;
     final beta = alpha.modPow((secp256k1P + BigInt.one) >> 2, secp256k1P);
     final y = (bytes[0] == 0x02)
         ? (beta.isEven ? beta : secp256k1P - beta)
         : (beta.isOdd ? beta : secp256k1P - beta);
+    // modPow yields a true sqrt only when alpha is a quadratic residue;
+    // otherwise x is not on the curve. Verify before trusting the point.
+    if (!_isOnCurve(x, y)) {
+      throw ArgumentError('Public key x-coordinate is not on the curve');
+    }
     return EcPoint(x, y);
   } else {
     throw ArgumentError('Invalid public key format (${bytes.length} bytes)');
   }
 }
+
+/// Whether (x, y) satisfies the secp256k1 curve equation y^2 == x^3 + 7 (mod p).
+bool _isOnCurve(BigInt x, BigInt y) =>
+    (y * y - (x * x * x + BigInt.from(7))) % secp256k1P == BigInt.zero;

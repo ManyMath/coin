@@ -21,18 +21,17 @@ class AggregatedKey {
   })  : _secondKey = secondKey,
         _keyAggList = keyAggList;
 
-  /// Keys are sorted lexicographically before aggregation.
+  /// Keys are used in the order provided, per BIP-327 sec. Key Aggregation.
+  /// The aggregated key depends on the ordering - callers are responsible
+  /// for providing a consistent, agreed-upon ordering across all signers.
   factory AggregatedKey.fromKeys(List<PublicKey> keys) {
     if (keys.isEmpty) {
       throw ArgumentError('At least one public key is required');
     }
 
-    final sorted = List<PublicKey>.from(keys);
-    sorted.sort((a, b) => compareBytes(a.bytes, b.bytes));
-
     // L = H("KeyAgg list", pk1 || pk2 || ... || pkn)
     final allKeyBytes = <int>[];
-    for (final key in sorted) {
+    for (final key in keys) {
       allKeyBytes.addAll(key.bytes);
     }
     final keyAggList = taggedHash(
@@ -41,17 +40,18 @@ class AggregatedKey {
     );
 
     // Second unique key for the coefficient optimization (none if all identical).
+    // Per BIP-327: u is the first key in the list that differs from keys[0].
     Uint8List? secondKey;
-    for (int i = 1; i < sorted.length; i++) {
-      if (!bytesEqual(sorted[i].bytes, sorted[0].bytes)) {
-        secondKey = sorted[i].bytes;
+    for (int i = 1; i < keys.length; i++) {
+      if (!bytesEqual(keys[i].bytes, keys[0].bytes)) {
+        secondKey = keys[i].bytes;
         break;
       }
     }
 
     // Q = sum(a_i * P_i)
     EcPoint aggPoint = EcPoint.infinity();
-    for (final key in sorted) {
+    for (final key in keys) {
       final coeff = _computeCoefficient(keyAggList, key.bytes, secondKey);
       final point = ecBytesToPoint(key.bytes);
       final tweaked = ecScalarMult(coeff, point);
@@ -65,7 +65,7 @@ class AggregatedKey {
     final aggKeyBytes = ecPointToBytes(aggPoint, compressed: true);
 
     return AggregatedKey._(
-      publicKeys: sorted,
+      publicKeys: List.unmodifiable(keys),
       aggregatedKey: PublicKey(aggKeyBytes),
       secondKey: secondKey,
       keyAggList: keyAggList,
