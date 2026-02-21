@@ -6,6 +6,11 @@ void main() {
     await VaultKeeper.initialize();
   });
 
+  // The generation/parsing/validation/toString groups below are behavioral
+  // (word counts per BIP-39 entropy sizes, whitespace handling, checksum
+  // acceptance/rejection). The "abandon..about" and "zoo..vote" phrases are the
+  // BIP-39 all-zeros / all-ones-entropy mnemonics; their seeds are asserted in
+  // the "BIP-39 seed derivation" group (trezor vectors.json).
   group('Mnemonic generation', () {
     test('generate 12-word mnemonic (128 bits)', () {
       final m = Mnemonic.generate(strength: 128);
@@ -126,8 +131,13 @@ void main() {
     });
   });
 
-  // BIP-39 seed vectors from the reference test suite maintained by Trezor:
-  // https://github.com/trezor/python-mnemonic/blob/master/vectors.json
+  // BIP-39 PBKDF2-HMAC-SHA512 seed vectors.
+  // - "abandon..about" with passphrase "TREZOR" -> c55257c3..3b04: first entry
+  //   of the Trezor vectors.json (english, 00000000000000000000000000000000
+  //   entropy):
+  //   https://github.com/trezor/python-mnemonic/blob/master/vectors.json
+  // - Empty-passphrase seeds (abandon..about -> 5eb00bbd..38e4, zoo..vote ->
+  //   e28a3705..4fef): PBKDF2-HMAC-SHA512(mnemonic, "mnemonic", 2048).
   group('BIP-39 seed derivation', () {
     test('12-word "abandon" mnemonic with empty passphrase', () {
       final m = Mnemonic.fromPhrase(
@@ -179,6 +189,7 @@ void main() {
     });
   });
 
+  // Behavioral integration: mnemonic seed -> BIP-32 master key shape.
   group('Mnemonic to HD key integration', () {
     test('mnemonic seed produces valid master key', () {
       final m = Mnemonic.fromPhrase(
@@ -189,6 +200,47 @@ void main() {
       expect(master.depth, 0);
       expect(master.secretKey.bytes.length, 32);
       expect(master.publicKey.bytes.length, 33);
+    });
+
+    // Full mnemonic -> seed -> BIP-32 master pipeline for the all-zeros-entropy
+    // BIP-39 phrase. The empty-passphrase seed (5eb00bbd..38e4, above) is the
+    // BIP-32 input; the resulting mainnet master xprv is the value produced by
+    // standard BIP-32 tooling (e.g. iancoleman.io/bip39, BIP32 Root Key field,
+    // coin = BTC). Master private key and chain code follow from
+    // HMAC-SHA512("Bitcoin seed", seed); the xprv is the base58check of those
+    // plus version 0x0488ADE4. The 4-byte master key fingerprint (73c5da0a) is
+    // hash160(masterPubKey)[:4].
+    test('mnemonic master key matches published "abandon" BIP-32 root xprv',
+        () {
+      final m = Mnemonic.fromPhrase(
+        'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about',
+      );
+      final seed = m.toSeed();
+      final master = DerivedKey.fromSeed(seed) as DerivedSecretKey;
+
+      // Master private key (IL of HMAC-SHA512("Bitcoin seed", seed)).
+      expect(
+        master.secretKey.toHex(),
+        '1837c1be8e2995ec11cda2b066151be2cfb48adf9e47b151d46adab3a21cdf67',
+      );
+      // Master chain code (IR).
+      expect(
+        hexEncode(master.chainCode),
+        '7923408dadd3c7b56eed15567707ae5e5dca089de972e07f3b860450e2a3b70e',
+      );
+      // Master public key (compressed 02/03 + x).
+      expect(
+        master.publicKey.toHex(),
+        '03d902f35f560e0470c63313c7369168d9d7df2d49bf295fd9fb7cb109ccee0494',
+      );
+      // Master key fingerprint = hash160(masterPubKey)[:4].
+      expect(master.fingerprint, 0x73c5da0a);
+      // Full base58check mainnet extended root key (xprv, depth 0).
+      expect(
+        master.encode(),
+        'xprv9s21ZrQH143K3GJpoapnV8SFfukcVBSfeCficPSGfubmSFDxo1kuHn'
+        'LisriDvSnRRuL2Qrg5ggqHKNVpxR86QEC8w35uxmGoggxtQTPvfUu',
+      );
     });
 
     test('different mnemonics produce different master keys', () {

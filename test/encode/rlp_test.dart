@@ -9,6 +9,14 @@ void main() {
     await VaultKeeper.initialize();
   });
 
+  // Derived from spec: the encode/decode/round-trip groups below are computed
+  // by hand from the RLP encoding rules in the Ethereum Yellow Paper Appendix B
+  // (single byte <0x80 self-encodes; 0x80+len for 0-55 byte strings; 0xb7+ for
+  // longer; 0xc0/0xf7 list prefixes). https://ethereum.github.io/yellowpaper/paper.pdf
+  // Canonical published examples ("dog", ["cat","dog"], the set-of-three nested
+  // lists, integers 0/15/1024) are pinned in the "Known Ethereum RLP test
+  // vectors" group at the bottom; the rest are spec-rule expectations and
+  // round-trips (no separate external vector).
   group('RLP encode single values', () {
     test('empty byte string', () {
       final encoded = Rlp.encode(Uint8List(0));

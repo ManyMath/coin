@@ -8,9 +8,14 @@ void main() {
     await VaultKeeper.initialize();
   });
 
-  // Vectors: Bitcoin mainnet block 0 coinbase (genesis) and a P2SH address.
-  // Genesis coinbase: https://blockstream.info/block/0
-  // P2SH hash reused in address_test.dart / script_test.dart.
+  // Well-known Bitcoin Base58Check address pairs.
+  // - 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa is the address that received the
+  //   block-0 (genesis) coinbase output; its 21-byte payload is version 0x00 +
+  //   HASH160 62e907b1..8f18. https://blockstream.info/block/0
+  // - 3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy is the canonical P2SH example address
+  //   (version 0x05 + HASH160 b472a266..9fcb), reused in
+  //   address_test.dart / script_test.dart.
+  // These are the standard Base58 examples in BIP-13/Bitcoin wiki "Base58Check".
   group('Base58Check encode/decode known pairs', () {
     test('Satoshi genesis address 1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa', () {
       final payload = hexDecode(
@@ -33,6 +38,8 @@ void main() {
           equals('05b472a266d0bd89c13706a4132ccfb16f7c3b9fcb'));
     });
 
+    // Base58Check of 21 zero bytes -> the all-'1' prefix string (sha256d
+    // checksum + base58).
     test('encode/decode version 0x00 with 20 zero bytes', () {
       final payload = Uint8List(21);
       final encoded = base58Encode(payload);
@@ -42,6 +49,7 @@ void main() {
       expect(decoded, equals(payload));
     });
 
+    // Round-trip (encode-then-decode) consistency check.
     test('encode/decode single byte payload', () {
       final payload = Uint8List.fromList([0x05]);
       final encoded = base58Encode(payload);
@@ -62,6 +70,8 @@ void main() {
     });
   });
 
+  // Round-trip and negative (corrupted checksum / truncation / invalid char /
+  // empty) behavioral tests.
   group('Base58Check round-trip', () {
     test('round-trip with random-like data', () {
       final payload = hexDecode('0102030405060708090a0b0c0d0e0f10');

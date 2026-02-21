@@ -169,4 +169,38 @@ class DerivedPublicKey extends DerivedKey {
     data.setRange(45, 78, _publicKey.bytes);
     return VaultKeeper.vault.codec.base58CheckEncode(data);
   }
+
+  /// Decode a base58check extended PUBLIC key (xpub-form) back into a
+  /// [DerivedPublicKey]. The version bytes are not interpreted (any
+  /// xpub/ypub/zpub-style prefix is accepted); only the 78-byte body matters.
+  /// Throws [FormatException] / [ArgumentError] on a malformed key.
+  factory DerivedPublicKey.decode(String encoded) {
+    final data = VaultKeeper.vault.codec.base58CheckDecode(encoded);
+    if (data.length != DerivedKey.encodedLength) {
+      throw FormatException(
+        'Extended key must decode to ${DerivedKey.encodedLength} bytes, '
+        'got ${data.length}',
+      );
+    }
+    final depth = data[4];
+    final parentFingerprint =
+        (data[5] << 24) | (data[6] << 16) | (data[7] << 8) | data[8];
+    final index = (data[9] << 24) | (data[10] << 16) | (data[11] << 8) | data[12];
+    final chainCode = Uint8List.fromList(data.sublist(13, 45));
+    final keyBytes = Uint8List.fromList(data.sublist(45, 78));
+    if (keyBytes[0] != 0x02 && keyBytes[0] != 0x03) {
+      throw FormatException(
+        'Decoded extended key is not a public key (prefix '
+        '0x${keyBytes[0].toRadixString(16)}); private xprv import is not '
+        'supported here',
+      );
+    }
+    return DerivedPublicKey(
+      publicKey: PublicKey(keyBytes),
+      chainCode: chainCode,
+      depth: depth,
+      index: index,
+      parentFingerprint: parentFingerprint,
+    );
+  }
 }

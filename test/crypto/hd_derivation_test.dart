@@ -6,6 +6,12 @@ void main() {
     await VaultKeeper.initialize();
   });
 
+  // Seed 000102..0e0f is the BIP-32 Test Vector 1 seed:
+  // https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki#test-vector-1
+  // The groups below (fromSeed, Public key derivation, derivePath, DerivedKey
+  // properties) reuse it but assert structural/round-trip facts (depth, chain-
+  // code length, fingerprint=hash160[0:4], neuter consistency); the xprv/xpub
+  // strings are in the "BIP-32 Test Vector 1/2/3" groups.
   group('DerivedKey.fromSeed', () {
     test('produces DerivedSecretKey at depth 0', () {
       final seed = hexDecode('000102030405060708090a0b0c0d0e0f');
@@ -23,7 +29,7 @@ void main() {
     });
   });
 
-  // BIP-32 Test Vectors 1-3 from:
+  // BIP-32 Test Vectors 1-3, from the BIP-32 spec test-vector tables.
   // https://github.com/bitcoin/bips/blob/master/bip-0032.mediawiki#test-vectors
   group('BIP-32 Test Vector 1', () {
     late DerivedSecretKey master;

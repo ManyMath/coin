@@ -8,8 +8,15 @@ void main() {
     await VaultKeeper.initialize();
   });
 
-  // Hash 751e76e8... is HASH160 of the compressed pubkey for private key 1
-  // (the secp256k1 generator point G). Reused across address/script tests.
+  // Recurring programs in this file:
+  // - 751e76e8...3bd6 is HASH160 of the compressed pubkey for private key 1
+  //   (generator G); it is the witness program in the BIP-173 P2WPKH example
+  //   address bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4 (asserted below).
+  //   https://github.com/bitcoin/bips/blob/master/bip-0173.mediawiki
+  // - a60869f0...b32c is the x-only taproot output key from the BIP-86 test
+  //   vector (m/86'/0'/0'/0/0), encoded as the BIP-350 bech32m P2TR address;
+  //   also used in bip86_address_test.dart and bech32m_bip350_test.dart.
+  //   https://github.com/bitcoin/bips/blob/master/bip-0086.mediawiki#test-vectors
   group('Bech32 encode/decode (BIP-173)', () {
     test('encode and decode 20-byte witness program (P2WPKH style)', () {
       final data = hexDecode('751e76e8199196d454941c45d1b3a323f1433bd6');
@@ -24,6 +31,8 @@ void main() {
       expect(decoded, equals(data));
     });
 
+    // Round-trip over an arbitrary 32-byte program; encode-then-decode
+    // returns the input.
     test('encode and decode 32-byte witness program (P2WSH style)', () {
       final data = hexDecode(
           '1863143c14c5166804bd19203356da136c985678cd4d27a1b8c6329604903262');
@@ -123,6 +132,7 @@ void main() {
       expect(decoded, equals(data));
     });
 
+    // Round-trip over a synthetic all-0xaa 32-byte program.
     test('bech32m round-trip with various witness versions', () {
       final data = hexDecode(
           'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
@@ -134,6 +144,8 @@ void main() {
     });
   });
 
+  // Negative tests: corrupt a known-good address and assert rejection. The
+  // spec invalid-string vectors live in bech32m_bip350_test.dart.
   group('Bech32 invalid string detection', () {
     test('invalid character in data part throws', () {
       expect(
@@ -162,6 +174,7 @@ void main() {
     });
   });
 
+  // Round-trip consistency over synthetic 20/32-byte programs.
   group('Bech32 round-trip', () {
     test('round-trip encode/decode for 20-byte program', () {
       final data = Uint8List(20);

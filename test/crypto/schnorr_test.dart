@@ -24,7 +24,9 @@ void main() {
     });
 
     test('known private key produces known x-only key', () {
-      // private key = 1 => G point x-coordinate
+      // Derived: private key = 1 => x-coordinate of the secp256k1 generator G
+      // (Gx = 79be667e...f81798), from the curve params in SEC 2 v2 sec. 2.4.1.
+      // https://www.secg.org/sec2-v2.pdf
       final sk = SecretKey.fromHex(
           '0000000000000000000000000000000000000000000000000000000000000001');
       final xOnly = sk.xOnly;
@@ -33,6 +35,9 @@ void main() {
     });
   });
 
+  // Behavioral sign-then-verify / round-trip tests using the
+  // BIP-32 m/0' key (e8f32e..6b35) or generated keys; no published signature.
+  // The published signatures are in the "BIP-340 test vectors" group below.
   group('Schnorr signing and verification', () {
     late SecretKey sk;
     late Uint8List xPub;
@@ -81,11 +86,13 @@ void main() {
     });
   });
 
-  // BIP-340 test vectors from:
+  // BIP-340 test vectors. Each (secret key, public key,
+  // aux_rand, message, signature) tuple below is row index 0-4 of the official
+  // CSV (vectors 0-3 sign+verify, vector 4 is verify-only).
   // https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki
   // CSV: https://github.com/bitcoin/bips/blob/master/bip-0340/test-vectors.csv
   group('BIP-340 test vectors', () {
-    // BIP-340 vector 0
+    // BIP-340 vector 0 (CSV index 0)
     test('vector 0 - sign and verify', () {
       final sk = SecretKey.fromHex(
           '0000000000000000000000000000000000000000000000000000000000000003');
@@ -129,6 +136,46 @@ void main() {
           '8906d11ac976abccb20b091292bff4ea897efcb639ea871cfa95f6de339e4b0a');
     });
 
+    // BIP-340 vector 2
+    test('vector 2 - sign and verify', () {
+      final sk = SecretKey.fromHex(
+          'c90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b14e5c9');
+      final xPub = sk.xOnly;
+
+      final msg = hexDecode(
+          '7e2d58d8b3bcdf1abadec7829054f90dda9805aab56c77333024b9d0a508b75c');
+      final auxRand = hexDecode(
+          'c87aa53824b4d7ae2eb035a2b5bbbccc080e76cdc6d1692c4b0b62d798e6d906');
+      final sig = SchnorrSig.sign(msg, sk.bytes, auxRand: auxRand);
+
+      expect(sig.verify(msg, xPub), isTrue);
+
+      expect(
+          sig.toHex(),
+          '5831aaeed7b44bb74e5eab94ba9d4294c49bcf2a60728d8b4c200f50dd313c1b'
+          'ab745879a5ad954a72c45a91c3a51d3c7adea98d82f8481e0e1e03674a6f3fb7');
+    });
+
+    // BIP-340 vector 3 (max-value msg and aux_rand)
+    test('vector 3 - sign and verify', () {
+      final sk = SecretKey.fromHex(
+          '0b432b2677937381aef05bb02a66ecd012773062cf3fa2549e44f58ed2401710');
+      final xPub = sk.xOnly;
+
+      final msg = hexDecode(
+          'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff');
+      final auxRand = hexDecode(
+          'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff');
+      final sig = SchnorrSig.sign(msg, sk.bytes, auxRand: auxRand);
+
+      expect(sig.verify(msg, xPub), isTrue);
+
+      expect(
+          sig.toHex(),
+          '7eb0509757e246f19449885651611cb965ecc1a187dd51b64fda1edc9637d5ec'
+          '97582b9cb13db3933705b32ba982af5af25fd78881ebb32771fc5922efc66ea3');
+    });
+
     // BIP-340 vector 4 (verification only)
     test('vector 4 - verify only', () {
       final xPub = hexDecode(
@@ -142,6 +189,8 @@ void main() {
     });
   });
 
+  // Behavioral edge-case tests (determinism with fixed auxRand,
+  // distinctness across messages/keys, length validation).
   group('Schnorr edge cases', () {
     test('different messages produce different signatures', () {
       final sk = SecretKey.generate();
