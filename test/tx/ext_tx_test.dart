@@ -146,35 +146,35 @@ void main() {
   });
 
   group('version field parsing', () {
-    test('txType returns lower 16 bits', () {
+    test('txVersion returns lower 16 bits', () {
       final exTx = ExTx(
         version: 3 | (9 << 16),
         inputs: [makeInput()],
         outputs: [makeOutput()],
       );
 
-      expect(exTx.txType, 3);
+      expect(exTx.txVersion, 3);
     });
 
-    test('txExtraVersion returns upper 16 bits', () {
+    test('txType returns upper 16 bits', () {
       final exTx = ExTx(
         version: 3 | (9 << 16),
         inputs: [makeInput()],
         outputs: [makeOutput()],
       );
 
-      expect(exTx.txExtraVersion, 9);
+      expect(exTx.txType, 9);
     });
 
-    test('txType and txExtraVersion for plain version', () {
+    test('txVersion and txType for plain version', () {
       final exTx = ExTx(
         version: 2,
         inputs: [makeInput()],
         outputs: [makeOutput()],
       );
 
-      expect(exTx.txType, 2);
-      expect(exTx.txExtraVersion, 0);
+      expect(exTx.txVersion, 2);
+      expect(exTx.txType, 0);
     });
   });
 

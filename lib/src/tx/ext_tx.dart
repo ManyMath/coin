@@ -17,11 +17,44 @@ class ExTx extends Tx {
     Uint8List? payload,
   }) : payload = payload ?? Uint8List(0);
 
+  /// Parses an extended transaction from [reader], which must be positioned
+  /// at the start of the transaction (before the version word).
+  factory ExTx.fromReader(WireReader reader) =>
+      ExTx.fromReaderWithVersion(reader, reader.readInt32());
+
+  /// Parses the body of an extended transaction from [reader], given a
+  /// [version] word that has already been consumed. After the standard tx
+  /// body (inputs, outputs, optional witness, locktime) a trailing
+  /// varint-length-prefixed `vExtraPayload` is read iff one is present.
+  ///
+  /// The payload read is a single bounded [WireReader.readVarSlice]; it is
+  /// never a "read to end of buffer" - so this remains correct when several
+  /// transactions share one buffer.
+  factory ExTx.fromReaderWithVersion(WireReader reader, int version) {
+    final body = Tx.readBody(reader);
+    final payload = reader.atEnd ? Uint8List(0) : reader.readVarSlice();
+    return ExTx(
+      version: version,
+      inputs: body.inputs,
+      outputs: body.outputs,
+      locktime: body.locktime,
+      payload: payload,
+    );
+  }
+
   bool get hasPayload => payload.isNotEmpty;
 
-  int get txType => version & 0xffff;
+  /// The base transaction version (`nVersion`), the low 16 bits of [version].
+  ///
+  /// Firo and Dash pack the special-tx type and version as
+  /// `nVersion | (nType << 16)`.
+  int get txVersion => version & 0xffff;
 
-  int get txExtraVersion => (version >> 16) & 0xffff;
+  /// The special-tx type (`nType`), the high 16 bits of [version].
+  ///
+  /// `0` (`TRANSACTION_NORMAL`) for ordinary transactions; non-zero for
+  /// Firo/Dash special transactions (e.g. `5` = `TRANSACTION_COINBASE`).
+  int get txType => (version >> 16) & 0xffff;
 
   ExTx copyWith({
     int? version,

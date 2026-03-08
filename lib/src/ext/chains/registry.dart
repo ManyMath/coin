@@ -3,6 +3,7 @@ import 'bitcoin_params.dart';
 import 'litecoin_params.dart';
 import 'dogecoin_params.dart';
 import 'dash_params.dart';
+import 'firo_params.dart';
 import 'bitcoin_cash_params.dart';
 import 'bitcoin_sv_params.dart';
 import 'monero_params.dart';
@@ -21,6 +22,8 @@ class ChainRegistry {
     DogecoinParams.dogecoinTestnet,
     DashParams.dash,
     DashParams.dashTestnet,
+    FiroParams.firo,
+    FiroParams.firoTestnet,
     BitcoinCashParams.bitcoinCash,
     BitcoinCashParams.bitcoinCashTestnet,
     BitcoinSvParams.bitcoinSv,

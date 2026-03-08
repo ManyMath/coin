@@ -3,6 +3,7 @@ import '../../core/wire.dart';
 import '../../hash/digest.dart';
 import 'hasher.dart';
 import 'sighash_type.dart';
+import '../ext_tx.dart';
 import '../tx.dart';
 
 /// Legacy sighash (pre-segwit).
@@ -23,6 +24,15 @@ class LegacySigHasher implements SigHasher {
 
   void _writeForSig(WireWriting writer, Tx tx, int inputIndex,
       SigHashType hashType, Uint8List prevScript) {
+    // NOTE: the legacy sighash preimage is hand-built here (version, inputs,
+    // outputs, locktime, hashType.flag) and intentionally never references
+    // tx.mwebBytes. This matches Litecoin Core's
+    // CTransactionSignatureSerializer::Serialize (src/script/interpreter.cpp),
+    // which omits the MWEB extension block from the preimage. Including it
+    // would produce signatures the network rejects for the canonical-chain
+    // inputs of an MWEB pegin tx. If this hasher is ever refactored to clone
+    // a Tx and call tx.writeTo, the clone MUST drop mwebBytes to preserve this
+    // invariant (see mweb_sighash_test.dart).
     writer.writeInt32(tx.version);
 
     final baseType = hashType.baseType;
@@ -62,6 +72,17 @@ class LegacySigHasher implements SigHasher {
     }
 
     writer.writeUInt32(tx.locktime);
+
+    // Firo/Dash special transactions append vExtraPayload to the legacy
+    // sighash preimage, between locktime and the hashType flag. This mirrors
+    // Firo Core's CTransactionSignatureSerializer::Serialize, which appends
+    // vExtraPayload when nVersion == 3 && nType != TRANSACTION_NORMAL. The
+    // gate here is structural - non-zero high 16 bits of the version word
+    // (nType != 0) - so it stays correct for future nVersion values.
+    if (tx is ExTx && (tx.version >> 16) != 0 && tx.hasPayload) {
+      writer.writeVarSlice(tx.payload);
+    }
+
     writer.writeUInt32(hashType.flag);
   }
 

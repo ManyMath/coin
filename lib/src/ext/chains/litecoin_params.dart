@@ -8,6 +8,7 @@ extension LitecoinParams on ChainParams {
       p2pkhPrefix: 0x30,
       p2shPrefix: 0x32,
       bech32Hrp: 'ltc',
+      mwebHrp: 'ltcmweb',
       name: 'Litecoin',
       bip44CoinType: 2,
       supportsSegwit: true,
@@ -23,9 +24,11 @@ extension LitecoinParams on ChainParams {
       AddrType.p2wpkh,
       AddrType.p2wsh,
       AddrType.p2tr,
+      AddrType.mweb,
     ],
     supportsSegwit: true,
     supportsTaproot: true,
+    supportsMweb: true,
   );
 
   static final litecoinTestnet = ChainParams(
@@ -34,6 +37,7 @@ extension LitecoinParams on ChainParams {
       p2pkhPrefix: 0x6f,
       p2shPrefix: 0x3a,
       bech32Hrp: 'tltc',
+      mwebHrp: 'tmweb',
       name: 'Litecoin Testnet',
       bip44CoinType: 1,
       supportsSegwit: true,
@@ -49,8 +53,10 @@ extension LitecoinParams on ChainParams {
       AddrType.p2wpkh,
       AddrType.p2wsh,
       AddrType.p2tr,
+      AddrType.mweb,
     ],
     supportsSegwit: true,
     supportsTaproot: true,
+    supportsMweb: true,
   );
 }

@@ -275,6 +275,93 @@ void main() {
     });
   });
 
+  group('segwit flag bitfield', () {
+    // version=02000000, marker=00, flag=??, 1 input (prevout 32 zero bytes +
+    // vout 00000000, empty scriptSig 00, seq ffffffff), 1 output
+    // (value 0000000000000000, empty scriptPubKey 00), locktime 00000000.
+    // No witness vectors, no MWEB tail.
+    String fixture(String flag) =>
+        '02000000' // version
+        '00' // marker
+        '$flag' // flag
+        '01' // input count
+        '${'00' * 32}' // prevout txid
+        '00000000' // prevout vout
+        '00' // scriptSig length 0
+        'ffffffff' // sequence
+        '01' // output count
+        '0000000000000000' // value
+        '00' // scriptPubKey length 0
+        '00000000'; // locktime
+
+    test('flag 0x02 throws', () {
+      expect(() => Tx.fromHex(fixture('02')), throwsFormatException);
+    });
+
+    test('flag 0x10 throws', () {
+      expect(() => Tx.fromHex(fixture('10')), throwsFormatException);
+    });
+
+    test('flag 0xff throws', () {
+      expect(() => Tx.fromHex(fixture('ff')), throwsFormatException);
+    });
+
+    test('flag 0x04 throws', () {
+      expect(() => Tx.fromHex(fixture('04')), throwsFormatException);
+    });
+
+    test('flag 0x08 (MWEB-only, no trailing blob) parses to locktime', () {
+      // With no trailing MWEB bytes, the read path must still consume the
+      // input/output count via the sawMarker branch (not hasWitness) and not
+      // attempt to read witness vectors.
+      final tx = Tx.fromHex(fixture('08'));
+      expect(tx.inputs.length, 1);
+      expect(tx.outputs.length, 1);
+      expect(tx.locktime, 0);
+    });
+
+    test('flag 0x01 (witness) still parses', () {
+      // flag 0x01 with one empty witness vector (00) before locktime.
+      final hex = '02000000' // version
+          '00' // marker
+          '01' // flag
+          '01' // input count
+          '${'00' * 32}' // prevout txid
+          '00000000' // prevout vout
+          '00' // scriptSig length 0
+          'ffffffff' // sequence
+          '01' // output count
+          '0000000000000000' // value
+          '00' // scriptPubKey length 0
+          '00' // witness vector for input 0: 0 items
+          '00000000'; // locktime
+      final tx = Tx.fromHex(hex);
+      expect(tx.inputs.length, 1);
+      expect(tx.outputs.length, 1);
+    });
+  });
+
+  group('MWEB round-trip', () {
+    // LTC mainnet HogEx tx from block 2680000. Flag 0x08 (MWEB only,
+    // no witness vectors); mwebBytes is the single byte 0x00; locktime is
+    // 00000000. mwebBytes sits between the output and the 4-byte locktime.
+    const hogExHex =
+        '02000000000801055b9501fc80f092ec6a1fc82a130fbc4126d76aaccc8ff09d47'
+        'bcacd439facf0000000000ffffffff0119a0e168b702000022582055b14302a081'
+        '2dcfad58dc83b0d2c96d3bf36cc08735cd36987f721b69f6faa10000000000';
+
+    test('parses mwebBytes and round-trips unchanged', () {
+      final tx = Tx.fromHex(hogExHex);
+      expect(tx.mwebBytes, isNotNull);
+      expect(tx.mwebBytes!.length, 1);
+      expect(tx.mwebBytes![0], 0x00);
+      expect(tx.inputs.length, 1);
+      expect(tx.outputs.length, 1);
+      expect(tx.locktime, 0);
+      expect(tx.toHex(), hogExHex);
+    });
+  });
+
   group('RawInput', () {
     test('default sequence is 0xffffffff', () {
       final input = RawInput(

@@ -3,6 +3,10 @@ class Chain {
   final int p2pkhPrefix;
   final int p2shPrefix;
   final String? bech32Hrp;
+
+  /// Litecoin MWEB bech32 human-readable prefix (e.g. `ltcmweb` mainnet,
+  /// `tmweb` testnet/regtest). Null for chains without MWEB support.
+  final String? mwebHrp;
   final String name;
   final int bip44CoinType;
   final bool supportsSegwit;
@@ -13,6 +17,7 @@ class Chain {
     required this.p2pkhPrefix,
     required this.p2shPrefix,
     this.bech32Hrp,
+    this.mwebHrp,
     required this.name,
     required this.bip44CoinType,
     this.supportsSegwit = true,
