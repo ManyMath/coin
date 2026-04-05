@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import '../../core/wire.dart';
 import '../../hash/tagged.dart';
+import '../../hash/digest.dart';
 import 'hasher.dart';
 import 'sighash_type.dart';
 import '../tx.dart';
@@ -63,20 +64,22 @@ class TaprootSigHasher implements SigHasher {
     }
 
     if (baseType == 0x03) {
-      final ob = Uint8List(4);
-      WireWriter(ob).writeUInt32(inputIndex);
       parts.addAll(_hashSingleOutput(tx, inputIndex));
     }
 
     return taggedHash('TapSighash', Uint8List.fromList(parts));
   }
 
+  // BIP-341 sub-hashes (sha_prevouts, sha_amounts, sha_scriptpubkeys,
+  // sha_sequences, sha_outputs) are PLAIN single SHA256 over the concatenated
+  // serialization - NOT tagged hashes.
+
   Uint8List _hashPrevouts(Tx tx) {
     final parts = <int>[];
     for (final inp in tx.inputs) {
       parts.addAll(inp.prevOut.toBytes());
     }
-    return taggedHash('TapSighash/prevouts', Uint8List.fromList(parts));
+    return sha256(Uint8List.fromList(parts));
   }
 
   Uint8List _hashAmounts() {
@@ -86,17 +89,18 @@ class TaprootSigHasher implements SigHasher {
       WireWriter(buf).writeUInt64(out.value);
       parts.addAll(buf);
     }
-    return taggedHash('TapSighash/amounts', Uint8List.fromList(parts));
+    return sha256(Uint8List.fromList(parts));
   }
 
   Uint8List _hashScriptPubKeys() {
     final parts = <int>[];
     for (final out in prevOuts) {
       final spk = out.scriptPubKey;
-      parts.add(spk.length);
+      // Each scriptPubKey is length-prefixed as a varint (compact size).
+      parts.addAll(_varIntBytes(spk.length));
       parts.addAll(spk);
     }
-    return taggedHash('TapSighash/scriptpubkeys', Uint8List.fromList(parts));
+    return sha256(Uint8List.fromList(parts));
   }
 
   Uint8List _hashSequences(Tx tx) {
@@ -105,7 +109,7 @@ class TaprootSigHasher implements SigHasher {
     for (final inp in tx.inputs) {
       w.writeUInt32(inp.sequence);
     }
-    return taggedHash('TapSighash/sequences', buf);
+    return sha256(buf);
   }
 
   Uint8List _hashOutputs(Tx tx) {
@@ -113,12 +117,25 @@ class TaprootSigHasher implements SigHasher {
     for (final out in tx.outputs) {
       parts.addAll(out.toBytes());
     }
-    return taggedHash('TapSighash/outputs', Uint8List.fromList(parts));
+    return sha256(Uint8List.fromList(parts));
   }
 
   Uint8List _hashSingleOutput(Tx tx, int index) {
-    if (index >= tx.outputs.length) return Uint8List(32);
-    return taggedHash('TapSighash/outputs', tx.outputs[index].toBytes());
+    // SIGHASH_SINGLE with index out of range is undefined in BIP-341; the
+    // signer must not produce such a signature. Be explicit rather than
+    // silently committing to a zero hash.
+    if (index >= tx.outputs.length) {
+      throw ArgumentError(
+          'SIGHASH_SINGLE: no matching output at index $index');
+    }
+    return sha256(tx.outputs[index].toBytes());
+  }
+
+  List<int> _varIntBytes(int n) {
+    final measure = WireMeasure()..writeVarInt(BigInt.from(n));
+    final buf = Uint8List(measure.size);
+    WireWriter(buf).writeVarInt(BigInt.from(n));
+    return buf;
   }
 
   Uint8List _outputBytes(TxOutput out) {

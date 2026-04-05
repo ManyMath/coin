@@ -53,16 +53,28 @@ class Taproot {
     return taggedHash('TapTweak', concatBytes([xOnly, tree!.hash]));
   }
 
+  /// The even-Y lift of the internal key (BIP-340 `lift_x` of its x-only
+  /// coordinate), as a 33-byte compressed point. BIP-341 tweaking operates on
+  /// this, NOT the raw-parity internal point - otherwise an odd-Y internal key
+  /// yields an output key (and address) inconsistent with the tweaked secret
+  /// key produced by [tweakSecretKey].
+  Uint8List get _evenInternalKey =>
+      Uint8List.fromList([0x02, ...internalKey.xOnly]);
+
   /// Returns the x-only tweaked output key (32 bytes).
   Uint8List get tweakedKey {
     final tweaked = VaultKeeper.vault.curve
-        .publicKeyTweakAdd(internalKey.bytes, tweak);
+        .publicKeyTweakAdd(_evenInternalKey, tweak);
     if (tweaked == null) throw StateError('Failed to tweak public key');
     return PublicKey(tweaked).xOnly;
   }
 
   SecretKey tweakSecretKey(SecretKey key) {
-    final tweaked = key.tweak(tweak);
+    // BIP-341: taproot tweaking operates on the x-only (even-Y) representation
+    // of the internal key. If the internal public key has an odd Y, the secret
+    // key must be negated so that d*G has even Y before adding the tweak.
+    final effective = key.publicKey.yIsEven ? key : key.negate();
+    final tweaked = effective.tweak(tweak);
     if (tweaked == null) throw StateError('Failed to tweak secret key');
     return tweaked;
   }
@@ -73,7 +85,7 @@ class Taproot {
     final xOnly = internalKey.xOnly;
     final parity = PublicKey(
         VaultKeeper.vault.curve.publicKeyTweakAdd(
-            internalKey.bytes, tweak)!).yIsEven
+            _evenInternalKey, tweak)!).yIsEven
         ? 0
         : 1;
     return Uint8List.fromList([

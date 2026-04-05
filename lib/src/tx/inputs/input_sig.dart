@@ -29,18 +29,30 @@ class SchnorrInputSig {
   SchnorrInputSig({required this.sig, required this.hashType});
 
   Uint8List toBytes() {
-    if (hashType == SigHashType.all) return sig; // 64 bytes, no suffix
+    // BIP-341: a bare 64-byte witness means SIGHASH_DEFAULT (0x00). Every
+    // other sighash type - INCLUDING explicit SIGHASH_ALL (0x01) - appends its
+    // 1-byte flag, giving a 65-byte witness.
+    if (hashType.isTaprootDefault) return sig; // 64 bytes, no suffix
     return Uint8List.fromList([...sig, hashType.flag]);
   }
 
   factory SchnorrInputSig.fromBytes(Uint8List bytes) {
     if (bytes.length == 64) {
-      return SchnorrInputSig(sig: bytes, hashType: SigHashType.all);
+      // No trailing flag => SIGHASH_DEFAULT (0x00).
+      return SchnorrInputSig(
+          sig: bytes, hashType: SigHashType.taprootDefault);
     }
     if (bytes.length == 65) {
+      final flag = bytes[64];
+      // A trailing 0x00 is invalid per BIP-341: SIGHASH_DEFAULT must be
+      // encoded as a bare 64-byte witness, never 64 bytes + 0x00.
+      if (flag == 0x00) {
+        throw ArgumentError(
+            'Invalid Schnorr signature: 65-byte witness with trailing 0x00');
+      }
       return SchnorrInputSig(
         sig: bytes.sublist(0, 64),
-        hashType: SigHashType.fromFlag(bytes[64]),
+        hashType: SigHashType.fromFlag(flag),
       );
     }
     throw ArgumentError('Invalid Schnorr signature length');
