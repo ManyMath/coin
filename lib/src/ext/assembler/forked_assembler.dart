@@ -1,10 +1,17 @@
-import '../../tx/inputs/tx_input.dart';
+import 'dart:typed_data';
+
+import 'package:meta/meta.dart';
+
 import '../../tx/tx.dart';
-import 'signing_callback.dart';
-import 'tx_assembler.dart';
 import '../forked_tx/forked_hasher.dart';
+import 'tx_assembler.dart';
 
 /// [TxAssembler] subclass for SIGHASH_FORKID chains (BCH / BSV).
+///
+/// Reuses the parent's signing/attachment flow ([TxAssembler.build] /
+/// [TxAssembler.buildAsync]) and only swaps in the fork-id sighash algorithm.
+/// Like the parent, it now attaches the produced signatures and returns a
+/// transaction with `complete == true`.
 class ForkedTxAssembler extends TxAssembler {
   /// Fork-id value embedded in the upper 24 bits of the sighash type word.
   final int forkId;
@@ -20,60 +27,25 @@ class ForkedTxAssembler extends TxAssembler {
   });
 
   @override
-  Tx build(SignerCallback signer) {
-    final rawInputs = inputs
-        .map((i) => RawInput(prevOut: i.outpoint, sequence: i.sequence))
-        .toList();
-
-    final tx = Tx(
-      version: version,
-      inputs: rawInputs,
-      outputs: List.of(outputs),
-      locktime: locktime,
-    );
-
+  @protected
+  Uint8List computeDigest(Tx tx, int index, AssemblerInput meta) {
     final hasher = ForkedHasher(forkId: forkId);
-    for (var i = 0; i < inputs.length; i++) {
-      final meta = inputs[i];
-      final digest = hasher.hash(
-        tx,
-        i,
-        meta.hashType,
-        prevScript: meta.scriptPubKey,
-        amount: meta.value,
-      );
-      signer(tx, i, digest, meta.hashType);
+    // For P2WPKH / nested P2WPKH the BIP-143-style scriptCode must still be the
+    // P2PKH-form script over the pubkey hash; for legacy P2PKH it is the
+    // scriptPubKey. (BCH is legacy-script + forkid, but mirror the parent's
+    // scriptCode selection so witness-style inputs are handled correctly.)
+    switch (meta.type) {
+      case AssemblerInputType.p2wpkh:
+      case AssemblerInputType.p2shP2wpkh:
+        return hasher.hash(tx, index, meta.hashType,
+            prevScript: p2wpkhScriptCode(meta), amount: meta.value);
+      case AssemblerInputType.p2pkh:
+        return hasher.hash(tx, index, meta.hashType,
+            prevScript: meta.scriptPubKey, amount: meta.value);
+      case AssemblerInputType.p2tr:
+        throw UnsupportedError(
+          'Taproot is not supported by ForkedTxAssembler.',
+        );
     }
-
-    return tx;
-  }
-
-  @override
-  Future<Tx> buildAsync(AsyncSignerCallback signer) async {
-    final rawInputs = inputs
-        .map((i) => RawInput(prevOut: i.outpoint, sequence: i.sequence))
-        .toList();
-
-    final tx = Tx(
-      version: version,
-      inputs: rawInputs,
-      outputs: List.of(outputs),
-      locktime: locktime,
-    );
-
-    final hasher = ForkedHasher(forkId: forkId);
-    for (var i = 0; i < inputs.length; i++) {
-      final meta = inputs[i];
-      final digest = hasher.hash(
-        tx,
-        i,
-        meta.hashType,
-        prevScript: meta.scriptPubKey,
-        amount: meta.value,
-      );
-      await signer(tx, i, digest, meta.hashType);
-    }
-
-    return tx;
   }
 }
