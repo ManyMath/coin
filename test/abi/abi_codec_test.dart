@@ -1,9 +1,22 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:coin/coin.dart';
 import 'package:coin/coin_evm.dart';
 import 'package:test/test.dart';
 
+// Word-level encoding layouts (left-padded uint/address, right-padded
+// fixed-bytes, the offset+length+padded-data form of string/bytes, dynamic and
+// fixed array layouts, tuple/head-tail layout) follow the Solidity Contract
+// ABI Specification, "Formal Specification of the Encoding":
+//   https://docs.soliditylang.org/en/latest/abi-spec.html
+//
+// Function selectors (a9059cbb, 095ea7b3, 70a08231, 23b872dd) are the ERC-20
+// selectors: selector = bytes4(keccak256("<signature>")).
+//   https://eips.ethereum.org/EIPS/eip-20, https://www.4byte.directory/
+//
+// The address 0xd8dA6BF2...96045 used throughout is the public vitalik.eth
+// address (input data only, not a spec vector).
 void main() {
   setUpAll(() async {
     await VaultKeeper.initialize();
@@ -313,8 +326,7 @@ void main() {
   });
 
   // ERC-20 function selectors are the first 4 bytes of keccak256(signature).
-  // Canonical values per https://eips.ethereum.org/EIPS/eip-20 and verifiable
-  // at https://www.4byte.directory/
+  // https://eips.ethereum.org/EIPS/eip-20, https://www.4byte.directory/
   group('Function selector', () {
     test('transfer(address,uint256) selector', () {
       final sel = SolCodec.selector('transfer(address,uint256)');
@@ -500,6 +512,10 @@ void main() {
     });
   });
 
+  // Per the Solidity ABI spec head-tail encoding
+  // (https://docs.soliditylang.org/en/latest/abi-spec.html): selector a9059cbb
+  // (= bytes4(keccak256("transfer(address,uint256)"))) ++ left-padded address
+  // word ++ uint256 word. 0x0de0b6b3a7640000 == 1e18 (1 ETH).
   group('Full ABI encoding vectors', () {
     test('transfer(address,uint256) full calldata', () {
       final to = hexDecode('dEAD000000000000000000000000000000000000');
@@ -517,6 +533,83 @@ void main() {
           '000000000000000000000000dead000000000000000000000000000000000000');
       expect(hex.substring(72),
           '0000000000000000000000000000000000000000000000000de0b6b3a7640000');
+    });
+  });
+
+  // Two examples from the Solidity Contract ABI Specification, "Use of
+  // Dynamic Types" / Examples:
+  //   https://docs.soliditylang.org/en/latest/abi-spec.html
+  group('Solidity ABI spec examples', () {
+    // Spec example: f(uint256,uint32[],bytes10,bytes) with arguments
+    //   (0x123, [0x456, 0x789], "1234567890", "Hello, world!").
+    // Selector keccak256("f(uint256,uint32[],bytes10,bytes)")[:4] = 0x8be65246.
+    // Calldata from the spec's "All together, the encoding is" block:
+    test('f(uint256,uint32[],bytes10,bytes) matches spec calldata', () {
+      final calldata = SolCodec.encodeCall(
+        'f(uint256,uint32[],bytes10,bytes)',
+        [
+          SolUint(256),
+          SolArray(SolUint(32)),
+          SolFixedBytes(10),
+          SolBytes(),
+        ],
+        [
+          BigInt.from(0x123),
+          [BigInt.from(0x456), BigInt.from(0x789)],
+          Uint8List.fromList(utf8.encode('1234567890')),
+          Uint8List.fromList(utf8.encode('Hello, world!')),
+        ],
+      );
+
+      expect(
+        hexEncode(calldata),
+        // Source: https://docs.soliditylang.org/en/latest/abi-spec.html
+        '8be65246'
+        '0000000000000000000000000000000000000000000000000000000000000123'
+        '0000000000000000000000000000000000000000000000000000000000000080'
+        '3132333435363738393000000000000000000000000000000000000000000000'
+        '00000000000000000000000000000000000000000000000000000000000000e0'
+        '0000000000000000000000000000000000000000000000000000000000000002'
+        '0000000000000000000000000000000000000000000000000000000000000456'
+        '0000000000000000000000000000000000000000000000000000000000000789'
+        '000000000000000000000000000000000000000000000000000000000000000d'
+        '48656c6c6f2c20776f726c642100000000000000000000000000000000000000',
+      );
+    });
+
+    // Spec example: sam(bytes,bool,uint256[]) with arguments
+    //   ("dave", true, [1, 2, 3]).
+    // Selector keccak256("sam(bytes,bool,uint256[])")[:4] = 0xa5643bf2.
+    // The 292-byte calldata from the spec:
+    test('sam(bytes,bool,uint256[]) matches spec calldata', () {
+      final calldata = SolCodec.encodeCall(
+        'sam(bytes,bool,uint256[])',
+        [
+          SolBytes(),
+          SolBool(),
+          SolArray(SolUint(256)),
+        ],
+        [
+          Uint8List.fromList(utf8.encode('dave')),
+          true,
+          [BigInt.from(1), BigInt.from(2), BigInt.from(3)],
+        ],
+      );
+
+      expect(
+        hexEncode(calldata),
+        // Source: https://docs.soliditylang.org/en/latest/abi-spec.html
+        'a5643bf2'
+        '0000000000000000000000000000000000000000000000000000000000000060'
+        '0000000000000000000000000000000000000000000000000000000000000001'
+        '00000000000000000000000000000000000000000000000000000000000000a0'
+        '0000000000000000000000000000000000000000000000000000000000000004'
+        '6461766500000000000000000000000000000000000000000000000000000000'
+        '0000000000000000000000000000000000000000000000000000000000000003'
+        '0000000000000000000000000000000000000000000000000000000000000001'
+        '0000000000000000000000000000000000000000000000000000000000000002'
+        '0000000000000000000000000000000000000000000000000000000000000003',
+      );
     });
   });
 }

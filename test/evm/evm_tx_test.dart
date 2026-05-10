@@ -10,9 +10,13 @@ void main() {
   });
 
   // EIP-155 test vector  -  private key 0x4646...46, nonce 9, to 0x3535...35.
-  // Signing hash, signed RLP, and v/r/s all from the spec:
+  // Signing hash, signed RLP, and v/r/s from the spec:
   // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md
   // https://eips.ethereum.org/EIPS/eip-155
+  //
+  // The unsigned signing hash 0xdaf5a779...4c8e53 is the keccak256 of the
+  // EIP-155 unsigned RLP pre-image for these fields (quoted in the EIP-155
+  // Example block).
   group('Legacy transaction RLP encoding', () {
     test('simple ETH transfer produces correct unsigned RLP', () {
       final tx = Envelope(
@@ -141,6 +145,11 @@ void main() {
     });
   });
 
+  // EIP-1559 (type 2) per https://eips.ethereum.org/EIPS/eip-1559.
+  // Signing fixture: ethereumjs / Hyperledger Besu eip1559.ts index 0
+  //   https://github.com/ethereumjs/ethereumjs-monorepo/blob/master/packages/tx/test/testData/eip1559.ts
+  // (same fixture as eip2930_eip1559_vectors_test.dart). Address
+  // 0xd8dA6BF2...96045 is the public vitalik.eth address (input data only).
   group('EIP-1559 (type 2) transaction encoding', () {
     test('EIP-1559 unsigned payload has type prefix 0x02', () {
       final tx = Envelope(
@@ -158,19 +167,28 @@ void main() {
       expect(hash.length, 32);
     });
 
-    test('EIP-1559 signing and serialization', () {
+    // Signing the ethereumjs/Besu fixture key over the fixture fields
+    // reproduces the signed RLP.
+    // Fields: chainId=4, nonce=819, maxPriorityFeePerGas=75853,
+    //   maxFeePerGas=121212, gasLimit=35552,
+    //   to=0x000000000000000000000000000000000000aaaa, value=43203529,
+    //   data=empty, accessList=[]; key 0x8f2a5594...c692be63.
+    // Source: ethereumjs-monorepo packages/tx/test/testData/eip1559.ts index 0.
+    test('EIP-1559 signing and serialization matches ethereumjs vector', () {
       final key = SecretKey(hexDecode(
-          '4646464646464646464646464646464646464646464646464646464646464646'));
+          '8f2a55949038a9610f50fb23b5883af3b4ecb3c3bb792cbcefbd1542c692be63'));
 
       final tx = Envelope(
         kind: EnvelopeKind.eip1559,
-        nonce: BigInt.from(0),
-        maxPriorityFeePerGas: BigInt.from(2000000000),
-        maxFeePerGas: BigInt.from(100000000000),
-        gasLimit: BigInt.from(21000),
-        to: hexDecode('3535353535353535353535353535353535353535'),
-        value: BigInt.from(1000000000000000000),
-        chainId: BigInt.one,
+        chainId: BigInt.from(4),
+        nonce: BigInt.from(819),
+        maxPriorityFeePerGas: BigInt.from(75853),
+        maxFeePerGas: BigInt.from(121212),
+        gasLimit: BigInt.from(35552),
+        to: hexDecode('000000000000000000000000000000000000aaaa'),
+        value: BigInt.from(43203529),
+        data: Uint8List(0),
+        accessList: const [],
       );
 
       final signed = EnvelopeSigner.sign(tx, key);
@@ -184,6 +202,15 @@ void main() {
       expect(decoded, isA<List>());
       final list = decoded as List;
       expect(list.length, 12);
+
+      // ethereumjs eip1559.ts vector index 0, full signed RLP (type 0x02 ++ RLP).
+      expect(
+        hexEncode(serialized),
+        '02f86e048203338301284d8301d97c828ae09400000000000000000000000000'
+        '0000000000aaaa8402933bc980c080a00f924cb68412c8f1cfd74d9b581c71ee'
+        'af94fff6abdde3e5b02ca6b2931dcf47a07dd1c50027c3e31f8b565e25ce68a5'
+        '072110f61fce5eee81b195dd51273c2f83',
+      );
     });
 
     test('EIP-1559 with empty access list', () {

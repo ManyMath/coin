@@ -34,6 +34,33 @@ class EvmAddr {
     return EvmAddr(bytes);
   }
 
+  /// EIP-1014 CREATE2 deterministic deployment address.
+  ///
+  ///   address = keccak256(0xff ++ deployer ++ salt ++ keccak256(initCode))[12:]
+  ///
+  /// [deployer] is the 20-byte address of the contract calling CREATE2,
+  /// [salt] is a 32-byte value, and [initCode] is the contract creation code.
+  /// See https://eips.ethereum.org/EIPS/eip-1014.
+  factory EvmAddr.create2({
+    required Uint8List deployer,
+    required Uint8List salt,
+    required Uint8List initCode,
+  }) {
+    final deployerBytes = copyCheckBytes(deployer, 20, 'deployer');
+    if (salt.length != 32) {
+      throw ArgumentError('Salt must be 32 bytes, got ${salt.length}');
+    }
+    final initCodeHash = keccak256(initCode);
+    final preimage = concatBytes([
+      Uint8List.fromList([0xff]),
+      deployerBytes,
+      salt,
+      initCodeHash,
+    ]);
+    final hash = keccak256(preimage);
+    return EvmAddr(hash.sublist(12));
+  }
+
   Uint8List get bytes => Uint8List.fromList(_data);
 
   /// EIP-55 mixed-case checksum encoding.
