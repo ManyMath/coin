@@ -1,0 +1,15 @@
+{
+  "impl": "walletconnect_dart@0.0.11",
+  "encrypt": {
+    "data": "87b911e5e0bfc8fd1a0fb7cb57bed8024f80176fc685e830a9d14a639a4a22c830dc7edc654a6141b3c3510402ccb096a67481f6d5abb49f3a9e747512211bf0",
+    "hmac": "16683eee7e05586f1538044157303e5ea73592ad259a51615e3f69adb24594cc",
+    "iv": "000102030405060708090a0b0c0d0e0f"
+  },
+  "decrypt_roundtrip": true,
+  "uri_v1": {
+    "topic": "8a5e5bdc-a0e4-4702-ba63-8f1a5655744f",
+    "version": 1,
+    "bridge": "https://bridge.walletconnect.org",
+    "key": "41791102999c339c844880b23950704cc43aa840f3739e365323cda4dfa89e7a"
+  }
+}
