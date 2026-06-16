@@ -83,4 +83,7 @@ export 'src/taproot/taproot.dart';
 export 'src/chain/chain.dart';
 export 'src/chain/denomination.dart';
 
+// Wallet (HD account address derivation)
+export 'src/wallet/hd_account.dart';
+
 Future<void> initCoin() => VaultKeeper.initialize();
