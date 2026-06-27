@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- Crypto primitives: X25519 (RFC 7748), ChaCha20-Poly1305 (RFC 8439),
+  Ed25519 (RFC 8032), AES-256-CBC, HKDF (RFC 5869), SHA-256/512, HMAC
+  (RFC 4231), RIPEMD-160; NIST P-256 ES256 verify + JWK decode.
+- BIP-327 MuSig2 noncecoef fix; off-curve public-key rejection. secp256k1
+  ECDSA, Schnorr (BIP-340), BIP-32/39, Base58Check, bech32/bech32m, RLP.
+- Firo/Dash special transactions (DIP-2 / ExTx); MWEB (Litecoin) parse/txid
+  + ltcmweb address parsing; taproot BIP-341 key-path fix; PSBT BIP-174;
+  TxAssembler BIP-143 witness + BIP-69 ordering.
+- EVM: EIP-1014 CREATE2; EIP-55/155/2930/1559/191/712/137, RLP, ABI,
+  ERC-4337 userOpHash, EIP-7702, ERC-1271.
+- WalletConnect transport crypto only (no Sign/Auth engine): v2 envelopes,
+  SHA-256 topic, EdDSA relay-auth JWT, `wc:` URI, v1 AES-CBC+HMAC cipher;
+  Verify API attestation via the in-house P-256.
+- HD account address derivation (BIP-44/49/84/86).
+
 ## 0.1.0
 
 - Initial release.
