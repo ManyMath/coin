@@ -16,6 +16,7 @@ export 'src/monero/encode/monero_base58.dart';
 
 // Mnemonic
 export 'src/monero/mnemonic/monero_mnemonic.dart';
+export 'src/monero/mnemonic/polyseed/polyseed_mnemonic.dart';
 export 'src/monero/mnemonic/monero_wordlist.dart';
 
 // Transaction primitives

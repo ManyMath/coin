@@ -24,6 +24,7 @@ dependencies:
   ffi: ^2.1.0
   wasm_interop: ^2.0.1
   meta: ^1.9.0
+  unorm_dart: ^0.3.0
 
 dev_dependencies:
   ffigen: ^20.1.1

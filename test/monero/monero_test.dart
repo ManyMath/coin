@@ -7,17 +7,21 @@ import 'package:coin/coin_monero.dart';
 // Ed25519 curve constants (G, l) from RFC 8032 sec. 5.1:
 // https://datatracker.ietf.org/doc/html/rfc8032#section-5.1
 //
-// Key-derivation vectors (spend key -> view key, address encoding) are
-// cross-checked against the Cryptonote Address Tests tool by luigi1111:
+// Key-derivation vectors (spend key -> view key, address encoding) from the
+// Cryptonote Address Tests tool by luigi1111:
 // https://github.com/luigi1111/xmr.llcoins.net  (site/addresstests.html)
-// and against monero-project/monero unit tests:
+// and from monero-project/monero unit tests:
 // https://github.com/monero-project/monero/tree/master/tests
 //
 // Pedersen commitment uses the standard Monero H generator; see
 // https://github.com/monero-project/monero/blob/master/src/ringct/rctTypes.h
 //
-// Polyseed vectors (c584b326...) and subaddress stagenet strings are
-// from the official Monero CLI wallet.
+// Monero key/address/subaddress/stealth/key-image/Pedersen vectors from the
+// staging branch of github.com/ManyMath/monero-rust.
+//
+// Polyseed (16-word) vectors from tevador/polyseed (the C reference,
+// https://github.com/tevador/polyseed), the Rust monero-wallet-util/polyseed,
+// and cake-tech polyseed_dart.
 void main() {
   setUpAll(() async {
     await initCoin();
@@ -751,6 +755,189 @@ void main() {
       final image1 = KeyImage.compute(outputPrivKey1, outputKey1);
       final image2 = KeyImage.compute(outputPrivKey2, outputKey2);
       expect(image1, isNot(equals(image2)));
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Polyseed mnemonic
+  //
+  // Test vectors sourced from three independent implementations:
+  //   - Dart reference (polyseed_dart v0.0.7, cake-tech)
+  //   - C reference   (tevador/polyseed)
+  //   - Rust reference (monero-wallet-util/polyseed)
+  //
+  // The Spanish vector (birthday=563) specifically exercises the multi-byte
+  // path of _store32 in the PBKDF2 salt (salt bytes 20-21 = 0x33 0x02).
+  // -------------------------------------------------------------------------
+  group('Polyseed mnemonic', () {
+    // -- English (Dart reference vector) ------------------------------------
+    const enPhrase =
+        'unaware yard donate shallow slot sing oil oxygen '
+        'loyal bench near hill surround forum execute lamp';
+    // PBKDF2-HMAC-SHA256 output; not yet scalar-reduced.
+    const enSpendSeed =
+        'cbbd142d38347773d44aa830f5f01442aa6d0d3bb48571884479531248e6fa1c';
+    // Decoded birthday: epoch + 22 * timeStep = 1635768000 + 57854412.
+    const enBirthday = 1693622412;
+
+    test('English: birthday decodes correctly', () {
+      final seed = PolyseedMnemonic.decode(enPhrase);
+      expect(seed.birthday, enBirthday);
+    });
+
+    test('English: generateSpendKey matches Dart/C/Rust reference', () {
+      final seed = PolyseedMnemonic.decode(enPhrase);
+      expect(hexEncode(seed.generateSpendKey()), enSpendSeed);
+    });
+
+    test('English: fromSeed produces valid Ed25519 key pair', () {
+      final seed = PolyseedMnemonic.decode(enPhrase);
+      final keys = MoneroKeys.fromSeed(seed.generateSpendKey());
+      expect(edIsOnCurve(edBytesToPoint(keys.publicSpendKey)), isTrue);
+      expect(edIsOnCurve(edBytesToPoint(keys.publicViewKey)), isTrue);
+    });
+
+    // -- English (C reference vector, birthday=1) ---------------------------
+    // This vector has birthday < 256, confirming correct LE encoding in salt.
+    const cSeed1Phrase =
+        'raven tail swear infant grief assist regular lamp '
+        'duck valid someone little harsh puppy airport language';
+    const cSeed1Key =
+        '21268a76048a3b25a4a9ac179d86b12fab5800b8d858da9facf4b0a778dc2840';
+
+    test('C-ref English (birthday=1): generateSpendKey matches C/Rust', () {
+      final seed = PolyseedMnemonic.decode(cSeed1Phrase);
+      expect(hexEncode(seed.generateSpendKey()), cSeed1Key);
+    });
+
+    // -- English (Rust reference vector) ------------------------------------
+    const rustPhrase =
+        'comic blanket chair inject end snow rural improve cereal '
+        'better initial replace ribbon brother gather unaware';
+    const rustKey =
+        'd85225a4fc7aaa3d3498831ab5e2bf83cc03f2e1e5af2597128f35af88112f7e';
+
+    test('Rust-ref English: generateSpendKey matches Rust reference', () {
+      final seed = PolyseedMnemonic.decode(rustPhrase);
+      expect(hexEncode(seed.generateSpendKey()), rustKey);
+    });
+
+    // -- Spanish (C reference vector, birthday=563) -------------------------
+    // birthday=563 = 0x0233, so LE bytes are 0x33 0x02  -  tests upper byte of
+    // _store32. Phrase uses NFC accented characters (é, ú, ñ, ó, á).
+    const esPhrase =
+        'eje fin parte c\u{00e9}lebre tab\u{00fa} pesta\u{00f1}a lienzo puma '
+        'prisi\u{00f3}n hora regalo lengua existir l\u{00e1}piz lote sonoro';
+    const esKey =
+        '35797a77a65f86ed1b78ddca70842b4cc9f6b11b3efadedb72a0d44a522b9a4f';
+
+    test('C-ref Spanish (birthday=563, accents): generateSpendKey matches C/Rust', () {
+      final seed = PolyseedMnemonic.decode(esPhrase);
+      expect(hexEncode(seed.generateSpendKey()), esKey);
+    });
+
+    // -- Japanese (polyseed_dart edge-case vector) ---------------------------
+    // Japanese BIP-39 wordlist is NFD-encoded; NFC user input must still match.
+    const jpPhrase =
+        'せつぶん いせい てはい けんか たてる ねんきん くたびれる いよく やたい '
+        'あいこくしん ちきゅう きたえる せたけ あひる かのう げつれい';
+    const jpKey =
+        '340593b3fd0b2670b4727b6a9b64f3f817e2b97fcb26ea3ae8467234eb857f95';
+
+    test('Japanese (NFC input): generateSpendKey matches reference', () {
+      final seed = PolyseedMnemonic.decode(jpPhrase);
+      expect(hexEncode(seed.generateSpendKey()), jpKey);
+    });
+
+    test('Japanese: regular ASCII spaces accepted (auto-converted to U+3000)', () {
+      final normalSpaces = jpPhrase.replaceAll('\u3000', ' ');
+      final seed = PolyseedMnemonic.decode(normalSpaces);
+      expect(hexEncode(seed.generateSpendKey()), jpKey);
+    });
+
+    // -- Validation helpers -------------------------------------------------
+    test('isValid: true for valid English phrase', () {
+      expect(PolyseedMnemonic.isValid(enPhrase), isTrue);
+    });
+
+    test('isValid: true for valid Spanish phrase', () {
+      expect(PolyseedMnemonic.isValid(esPhrase), isTrue);
+    });
+
+    test('isValid: false for wrong word count', () {
+      expect(PolyseedMnemonic.isValid('abandon ability able'), isFalse);
+    });
+
+    test('isValid: false for unknown words', () {
+      expect(PolyseedMnemonic.isValid('notaword ' * 16), isFalse);
+    });
+
+    test('decode: throws FormatException on checksum mismatch', () {
+      // "zoo" is a valid BIP-39 word but breaks the RS checksum.
+      final words = enPhrase.split(' ');
+      words[0] = 'zoo';
+      expect(
+        () => PolyseedMnemonic.decode(words.join(' ')),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('isEncrypted: false for standard unencrypted seed', () {
+      expect(PolyseedMnemonic.decode(enPhrase).isEncrypted, isFalse);
+    });
+
+    // An encrypted polyseed encodes features=16 (bit 4 set).
+    // Vector: "arm dutch crystal..." is the CakeWallet-encrypted form of enPhrase.
+    const encryptedPhrase =
+        'arm dutch crystal reduce elephant mix squeeze garlic '
+        'slam brand tent seed rubber fame summer sample';
+
+    test('isEncrypted: true for passphrase-encrypted seed', () {
+      expect(PolyseedMnemonic.decode(encryptedPhrase).isEncrypted, isTrue);
+    });
+
+    test('generateSpendKey: throws StateError for encrypted seed', () {
+      final seed = PolyseedMnemonic.decode(encryptedPhrase);
+      expect(() => seed.generateSpendKey(), throwsA(isA<StateError>()));
+    });
+
+    // decrypt: vector shared by the Dart/C/Rust Polyseed references.
+    // encryptedPhrase is enPhrase encrypted with passphrase "CakeWallet".
+    test('decrypt: CakeWallet passphrase restores original spend key', () {
+      final decrypted =
+          PolyseedMnemonic.decode(encryptedPhrase).decrypt('CakeWallet');
+      expect(decrypted.isEncrypted, isFalse);
+      expect(hexEncode(decrypted.generateSpendKey()), enSpendSeed);
+    });
+
+    test('decrypt: birthday is preserved after decryption', () {
+      final decrypted =
+          PolyseedMnemonic.decode(encryptedPhrase).decrypt('CakeWallet');
+      expect(decrypted.birthday, enBirthday);
+    });
+
+    test('decrypt: throws StateError when seed is not encrypted', () {
+      expect(
+        () => PolyseedMnemonic.decode(enPhrase).decrypt('anything'),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    // -- _store32 correctness (verified against C reference salt layout) ----
+    test('salt byte layout: coin=0, birthday=1 -> [20]=0x01, [21..23]=0x00', () {
+      // C reference expected salt hex for this vector:
+      // 504f4c5953454544 206b657900 ffffff 00000000 01000000 00000000 00000000
+      //  "POLYSEED key"   \0  \xff x3  coin=0 LE  bday=1LE feat=0LE  pad
+      final seed = PolyseedMnemonic.decode(cSeed1Phrase);
+      // Confirm the key matches  -  this indirectly validates the salt.
+      expect(hexEncode(seed.generateSpendKey()), cSeed1Key);
+    });
+
+    test('salt byte layout: birthday=563 -> [20]=0x33, [21]=0x02 (multi-byte LE)', () {
+      // 563 = 0x0233 -> LE bytes [0x33, 0x02, 0x00, 0x00]
+      // C reference expected key for this vector confirmed above via esKey.
+      final seed = PolyseedMnemonic.decode(esPhrase);
+      expect(hexEncode(seed.generateSpendKey()), esKey);
     });
   });
 

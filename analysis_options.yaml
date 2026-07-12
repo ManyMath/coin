@@ -1,5 +1,10 @@
 include: package:lints/recommended.yaml
 
+analyzer:
+  exclude:
+    # Generated BIP-39-style polyseed wordlist data (2048 words x 10 languages).
+    - lib/src/monero/mnemonic/polyseed/langs/**
+
 linter:
   rules:
     prefer_final_locals: true
