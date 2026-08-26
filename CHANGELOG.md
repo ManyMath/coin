@@ -1,6 +1,32 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
+
+### Fixed: taproot output keys and addresses were wrong for odd-Y internal keys
+
+`Taproot.tweakedKey` tweaked the internal key as derived instead of its BIP-341
+`lift_x` (even-Y) form. Roughly half of all internal keys have an odd Y, and for
+every one of those the computed output key, and therefore the P2TR address, was
+wrong. `Taproot.tweakSecretKey` had the mirror defect, so a key-path spend
+signed with the wrong tweaked key.
+
+**Who is affected:** anyone using 0.1.0 to derive, display or store P2TR
+addresses, or to sign key-path spends. Funds sent to an affected address are not
+spendable by the key the caller believes owns them; they are recoverable only
+with the correct internal key and external tooling.
+
+**What to do:** upgrade, then re-derive any P2TR address produced by 0.1.0 and
+compare. Addresses that change were wrong. Treat any 0.1.0-derived P2TR address
+already given out as suspect until re-derived.
+
+The fix normalises the internal key to its even-Y form before tweaking, in
+`tweakedKey`, in `tweakSecretKey` (by negating the secret key when the public Y
+is odd) and in the control-block parity bit. Regression coverage uses the
+BIP-86 address vectors, including an odd-Y case, and the BIP-341 key-path
+vectors. 0.1.0 shipped this defect because the suite had no
+assertion on a taproot tweak at all.
+
+### Also in this release
 
 - Crypto primitives: X25519 (RFC 7748), ChaCha20-Poly1305 (RFC 8439),
   Ed25519 (RFC 8032), AES-256-CBC, HKDF (RFC 5869), SHA-256/512, HMAC
