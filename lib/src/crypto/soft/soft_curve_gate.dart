@@ -117,6 +117,15 @@ class SoftCurveGate extends CurveGate {
   @override
   Uint8List schnorrSign(Uint8List hash32, Uint8List privKey,
       {Uint8List? auxRand}) {
+    if (hash32.length != 32) {
+      throw ArgumentError('BIP-340 message must be 32 bytes');
+    }
+    if (!isValidPrivateKey(privKey)) {
+      throw ArgumentError('Invalid private key for Schnorr signing');
+    }
+    if (auxRand != null && auxRand.length != 32) {
+      throw ArgumentError('BIP-340 auxiliary randomness must be 32 bytes');
+    }
     var d = bytesToBigInt(privKey);
     final pubPoint = ecScalarMult(d, secp256k1G);
     if (pubPoint.y.isOdd) d = secp256k1N - d;
@@ -150,6 +159,9 @@ class SoftCurveGate extends CurveGate {
     final sig = Uint8List(64);
     sig.setRange(0, 32, rx);
     sig.setRange(32, 64, bigIntToBytes(s, 32));
+    if (!schnorrVerify(sig, hash32, px)) {
+      throw StateError('Schnorr signature self-verification failed');
+    }
     return sig;
   }
 
@@ -157,7 +169,11 @@ class SoftCurveGate extends CurveGate {
   bool schnorrVerify(
       Uint8List signature, Uint8List hash32, Uint8List xPubKey) {
     try {
-      if (signature.length != 64 || xPubKey.length != 32) return false;
+      if (signature.length != 64 ||
+          hash32.length != 32 ||
+          xPubKey.length != 32) {
+        return false;
+      }
 
       final rx = bytesToBigInt(signature.sublist(0, 32));
       final s = bytesToBigInt(signature.sublist(32, 64));
@@ -174,8 +190,10 @@ class SoftCurveGate extends CurveGate {
       final e = bytesToBigInt(eBytes) % secp256k1N;
 
       final px = bytesToBigInt(xPubKey);
+      if (px >= secp256k1P) return false;
       final pAlpha = (px * px * px + BigInt.from(7)) % secp256k1P;
       final pBeta = pAlpha.modPow((secp256k1P + BigInt.one) >> 2, secp256k1P);
+      if ((pBeta * pBeta - pAlpha) % secp256k1P != BigInt.zero) return false;
       final py = pBeta.isEven ? pBeta : secp256k1P - pBeta;
       final pubPoint = EcPoint(px, py);
 

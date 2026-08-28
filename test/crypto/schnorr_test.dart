@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:coin/coin.dart';
+import 'package:coin/src/crypto/soft/soft_curve_gate.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -244,6 +245,106 @@ void main() {
       final msg = Uint8List(32)..[15] = 0x42;
       final sig = SchnorrSig.sign(msg, sk.bytes);
       expect(sig.verify(msg, sk.xOnly), isTrue);
+    });
+  });
+
+  // BIP-340 input validation: the signing inputs are exactly specified -
+  // a 32-byte message, a secret key in [1, n-1], and 32-byte aux randomness.
+  // Anything else must be rejected, never silently hashed/negated into a
+  // signature that encodes a different intent than the caller's.
+  group('BIP-340 signing input validation', () {
+    final msg = Uint8List(32);
+    late SecretKey sk;
+
+    setUp(() {
+      sk = SecretKey.fromHex(
+          'e8f32e723decf4051aefac8e2c93c9c5b214313817cdb01a1494b917c8436b35');
+    });
+
+    test('a zero secret key is rejected', () {
+      expect(() => SchnorrSig.sign(msg, Uint8List(32)), throwsArgumentError);
+    });
+
+    test('a secret key >= the curve order is rejected', () {
+      // secp256k1 n itself (SEC 2 v2 sec. 2.4.1).
+      final n = hexDecode(
+          'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141');
+      expect(() => SchnorrSig.sign(msg, n), throwsArgumentError);
+      // 2^256 - 1 (above n).
+      expect(
+          () => SchnorrSig.sign(msg, Uint8List(32)..fillRange(0, 32, 0xff)),
+          throwsArgumentError);
+    });
+
+    test('a short or long secret key is rejected', () {
+      expect(() => SchnorrSig.sign(msg, sk.bytes.sublist(0, 31)),
+          throwsArgumentError);
+      expect(() => SchnorrSig.sign(msg, Uint8List(33)..[32] = 1),
+          throwsArgumentError);
+    });
+
+    test('a non-32-byte message is rejected', () {
+      expect(() => SchnorrSig.sign(Uint8List(31), sk.bytes),
+          throwsArgumentError);
+      expect(() => SchnorrSig.sign(Uint8List(33), sk.bytes),
+          throwsArgumentError);
+      expect(() => SchnorrSig(Uint8List(64)).verify(Uint8List(31), sk.xOnly),
+          throwsArgumentError);
+    });
+
+    test('short or absent-allowed-only aux randomness is rejected', () {
+      expect(() => SchnorrSig.sign(msg, sk.bytes, auxRand: Uint8List(31)),
+          throwsArgumentError);
+      expect(() => SchnorrSig.sign(msg, sk.bytes, auxRand: Uint8List(33)),
+          throwsArgumentError);
+      // Exactly 32 bytes is accepted.
+      expect(SchnorrSig.sign(msg, sk.bytes, auxRand: Uint8List(32))
+          .verify(msg, sk.xOnly), isTrue);
+    });
+  });
+
+  group('pure curve gate BIP-340 validation', () {
+    final message = Uint8List(32);
+    final secret = hexDecode(
+      '0000000000000000000000000000000000000000000000000000000000000003',
+    );
+
+    test('rejects malformed inputs at the backend boundary', () {
+      final curve = SoftCurveGate();
+      expect(
+        () => curve.schnorrSign(message, Uint8List(32)),
+        throwsArgumentError,
+      );
+      expect(
+        () => curve.schnorrSign(Uint8List(31), secret),
+        throwsArgumentError,
+      );
+      expect(
+        () => curve.schnorrSign(message, secret, auxRand: Uint8List(31)),
+        throwsArgumentError,
+      );
+    });
+
+    test('rejects an x-only public key that is not on the curve', () {
+      // Official BIP-340 verification vector 5.
+      final publicKey = hexDecode(
+        'EEFDEA4CDB677750A420FEE807EACF21EB9898AE79B9768766E4FAA04A2D4A34',
+      );
+      final vectorMessage = hexDecode(
+        '243F6A8885A308D313198A2E03707344A4093822299F31D0082EFA98EC4E6C89',
+      );
+      final signature = hexDecode(
+        '6CFF5C3BA86C69EA4B7376F31A9BCB4F74C1976089B2D9963DA2E5543E177769'
+        '69E89B4C5564D00349106B8497785DD7D1D713A8AE82B32FA79D5F7FC407D39B',
+      );
+      expect(
+        SoftCurveGate().schnorrVerify(
+          signature,
+          vectorMessage,
+          publicKey,
+        ),
+        isFalse,
+      );
     });
   });
 }
