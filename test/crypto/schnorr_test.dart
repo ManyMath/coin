@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:coin/coin.dart';
+import 'package:coin/src/crypto/soft/soft_curve_gate.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -244,6 +245,189 @@ void main() {
       final msg = Uint8List(32)..[15] = 0x42;
       final sig = SchnorrSig.sign(msg, sk.bytes);
       expect(sig.verify(msg, sk.xOnly), isTrue);
+    });
+  });
+
+  // BIP-340 input validation: the signing inputs are exactly specified -
+  // a 32-byte message, a secret key in [1, n-1], and 32-byte aux randomness.
+  // Anything else must be rejected, never silently hashed/negated into a
+  // signature that encodes a different intent than the caller's.
+  group('BIP-340 signing input validation', () {
+    final msg = Uint8List(32);
+    late SecretKey sk;
+
+    setUp(() {
+      sk = SecretKey.fromHex(
+          'e8f32e723decf4051aefac8e2c93c9c5b214313817cdb01a1494b917c8436b35');
+    });
+
+    test('a zero secret key is rejected', () {
+      expect(() => SchnorrSig.sign(msg, Uint8List(32)), throwsArgumentError);
+    });
+
+    test('a secret key >= the curve order is rejected', () {
+      // secp256k1 n itself (SEC 2 v2 sec. 2.4.1).
+      final n = hexDecode(
+          'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141');
+      expect(() => SchnorrSig.sign(msg, n), throwsArgumentError);
+      // 2^256 - 1 (above n).
+      expect(
+          () => SchnorrSig.sign(msg, Uint8List(32)..fillRange(0, 32, 0xff)),
+          throwsArgumentError);
+    });
+
+    test('a short or long secret key is rejected', () {
+      expect(() => SchnorrSig.sign(msg, sk.bytes.sublist(0, 31)),
+          throwsArgumentError);
+      expect(() => SchnorrSig.sign(msg, Uint8List(33)..[32] = 1),
+          throwsArgumentError);
+    });
+
+    test('a non-32-byte message is rejected', () {
+      expect(() => SchnorrSig.sign(Uint8List(31), sk.bytes),
+          throwsArgumentError);
+      expect(() => SchnorrSig.sign(Uint8List(33), sk.bytes),
+          throwsArgumentError);
+      expect(() => SchnorrSig(Uint8List(64)).verify(Uint8List(31), sk.xOnly),
+          throwsArgumentError);
+    });
+
+    test('short or absent-allowed-only aux randomness is rejected', () {
+      expect(() => SchnorrSig.sign(msg, sk.bytes, auxRand: Uint8List(31)),
+          throwsArgumentError);
+      expect(() => SchnorrSig.sign(msg, sk.bytes, auxRand: Uint8List(33)),
+          throwsArgumentError);
+      // Exactly 32 bytes is accepted.
+      expect(SchnorrSig.sign(msg, sk.bytes, auxRand: Uint8List(32))
+          .verify(msg, sk.xOnly), isTrue);
+    });
+  });
+
+  group('pure curve gate BIP-340 validation', () {
+    final message = Uint8List(32);
+    final secret = hexDecode(
+      '0000000000000000000000000000000000000000000000000000000000000003',
+    );
+
+    test('rejects malformed inputs at the backend boundary', () {
+      final curve = SoftCurveGate();
+      expect(
+        () => curve.schnorrSign(message, Uint8List(32)),
+        throwsArgumentError,
+      );
+      expect(
+        () => curve.schnorrSign(Uint8List(31), secret),
+        throwsArgumentError,
+      );
+      expect(
+        () => curve.schnorrSign(message, secret, auxRand: Uint8List(31)),
+        throwsArgumentError,
+      );
+    });
+
+    test('rejects an x-only public key that is not on the curve', () {
+      // Official BIP-340 verification vector 5.
+      final publicKey = hexDecode(
+        'EEFDEA4CDB677750A420FEE807EACF21EB9898AE79B9768766E4FAA04A2D4A34',
+      );
+      final vectorMessage = hexDecode(
+        '243F6A8885A308D313198A2E03707344A4093822299F31D0082EFA98EC4E6C89',
+      );
+      final signature = hexDecode(
+        '6CFF5C3BA86C69EA4B7376F31A9BCB4F74C1976089B2D9963DA2E5543E177769'
+        '69E89B4C5564D00349106B8497785DD7D1D713A8AE82B32FA79D5F7FC407D39B',
+      );
+      expect(
+        SoftCurveGate().schnorrVerify(
+          signature,
+          vectorMessage,
+          publicKey,
+        ),
+        isFalse,
+      );
+    });
+
+    // Official BIP-340 verification-failure vectors (CSV indices 6-14). They
+    // pin the spec's fail-closed rules: the x-only public key must be a valid
+    // X coordinate below the field size (index 14), the signature's r must be
+    // below the field size and an on-curve X (indices 11-12), s must be below
+    // the curve order (index 13), and the reconstructed R must be the affine,
+    // even-Y point whose X equals r (indices 6-10). Vectors 15-18 are omitted:
+    // they sign arbitrary-length messages, which this API rejects by design.
+    // https://github.com/bitcoin/bips/blob/master/bip-0340/test-vectors.csv
+    group('verification failure vectors 6-14', () {
+      const msg =
+          '243F6A8885A308D313198A2E03707344A4093822299F31D0082EFA98EC4E6C89';
+      const vec1Pub =
+          'DFF1D77F2A671C5F36183726DB2341BE58FEAE1DA2DECED843240F7B502BA659';
+      const cases = <(int, String, String)>[
+        // (CSV index, public key, signature)
+        (
+          6,
+          vec1Pub,
+          'FFF97BD5755EEEA420453A14355235D382F6472F8568A18B2F057A1460297556'
+              '3CC27944640AC607CD107AE10923D9EF7A73C643E166BE5EBEAFA34B1AC553E2',
+        ), // has_even_y(R) is false
+        (
+          7,
+          vec1Pub,
+          '1FA62E331EDBC21C394792D2AB1100A7B432B013DF3F6FF4F99FCB33E0E1515F'
+              '28890B3EDB6E7189B630448B515CE4F8622A954CFE545735AAEA5134FCCDB2BD',
+        ), // negated message
+        (
+          8,
+          vec1Pub,
+          '6CFF5C3BA86C69EA4B7376F31A9BCB4F74C1976089B2D9963DA2E5543E177769'
+              '961764B3AA9B2FFCB6EF947B6887A226E8D7C93E00C5ED0C1834FF0D0C2E6DA6',
+        ), // negated s value
+        (
+          9,
+          vec1Pub,
+          '0000000000000000000000000000000000000000000000000000000000000000'
+              '123DDA8328AF9C23A94C1FEECFD123BA4FB73476F0D594DCB65C6425BD186051',
+        ), // sG - eP is infinite (x(inf) as 0)
+        (
+          10,
+          vec1Pub,
+          '0000000000000000000000000000000000000000000000000000000000000001'
+              '7615FBAF5AE28864013C099742DEADB4DBA87F11AC6754F93780D5A1837CF197',
+        ), // sG - eP is infinite (x(inf) as 1)
+        (
+          11,
+          vec1Pub,
+          '4A298DACAE57395A15D0795DDBFD1DCB564DA82B0F269BC70A74F8220429BA1D'
+              '69E89B4C5564D00349106B8497785DD7D1D713A8AE82B32FA79D5F7FC407D39B',
+        ), // sig[0:32] is not an X coordinate on the curve
+        (
+          12,
+          vec1Pub,
+          'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F'
+              '69E89B4C5564D00349106B8497785DD7D1D713A8AE82B32FA79D5F7FC407D39B',
+        ), // sig[0:32] is equal to field size
+        (
+          13,
+          vec1Pub,
+          '6CFF5C3BA86C69EA4B7376F31A9BCB4F74C1976089B2D9963DA2E5543E177769'
+              'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141',
+        ), // sig[32:64] is equal to curve order
+        (
+          14,
+          'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC30',
+          '6CFF5C3BA86C69EA4B7376F31A9BCB4F74C1976089B2D9963DA2E5543E177769'
+              '69E89B4C5564D00349106B8497785DD7D1D713A8AE82B32FA79D5F7FC407D39B',
+        ), // public key exceeds the field size
+      ];
+
+      test('all reject', () {
+        final curve = SoftCurveGate();
+        for (final (index, pub, sig) in cases) {
+          expect(
+            curve.schnorrVerify(hexDecode(sig), hexDecode(msg), hexDecode(pub)),
+            isFalse,
+            reason: 'BIP-340 vector $index must fail verification',
+          );
+        }
+      });
     });
   });
 }

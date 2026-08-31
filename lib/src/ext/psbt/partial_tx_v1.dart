@@ -37,6 +37,21 @@ class PartialTxV1 implements PartialTx {
       }
     }
 
+    // BIP-174 map-count consistency: one global map plus exactly one map
+    // per unsigned-transaction input and output.
+    if (unsignedTx != null) {
+      final inputCount = unsignedTx.inputs.length;
+      final outputCount = unsignedTx.outputs.length;
+      final expectedMapCount = 1 + inputCount + outputCount;
+      if (sections.length != expectedMapCount) {
+        throw FormatException(
+          'Invalid PSBT v0 map count: expected $expectedMapCount '
+          '(1 global + $inputCount input + $outputCount output), got '
+          '${sections.length}',
+        );
+      }
+    }
+
     final result = PartialTxV1(unsignedTx: unsignedTx);
     result._sections = sections;
     return result;
@@ -141,6 +156,8 @@ class PartialTxV1 implements PartialTx {
     Tx? nonWitnessUtxo,
     int sequence = 0xffffffff,
   }) {
+    _ensureSections();
+    final oldInputCount = inputCount;
     final newInput = RawInput(prevOut: outpoint, sequence: sequence);
     final inputs = _unsignedTx?.inputs ?? [];
     final outputs = _unsignedTx?.outputs ?? [];
@@ -166,8 +183,7 @@ class PartialTxV1 implements PartialTx {
       ));
     }
 
-    _ensureSections();
-    final insertIndex = 1 + (inputCount - 1);
+    final insertIndex = 1 + oldInputCount;
 
     _sections.insert(insertIndex, inputKvs);
   }
@@ -177,6 +193,7 @@ class PartialTxV1 implements PartialTx {
     required Uint8List scriptPubKey,
     required BigInt value,
   }) {
+    _ensureSections();
     final newOutput = TxOutput(value: value, scriptPubKey: scriptPubKey);
     final inputs = _unsignedTx?.inputs ?? [];
     final outputs = _unsignedTx?.outputs ?? [];
@@ -187,7 +204,6 @@ class PartialTxV1 implements PartialTx {
       locktime: _unsignedTx?.locktime ?? 0,
     );
 
-    _ensureSections();
     _sections.add(<PsbtKeyValue>[]);
   }
 
@@ -272,6 +288,16 @@ class PartialTxV1 implements PartialTx {
   void _ensureSections() {
     if (_sections.isEmpty) {
       _sections.add(<PsbtKeyValue>[]);
+    }
+    final expected = 1 + inputCount + outputCount;
+    while (_sections.length < expected) {
+      _sections.add(<PsbtKeyValue>[]);
+    }
+    if (_sections.length > expected) {
+      throw StateError(
+        'PSBT v0 has ${_sections.length} maps but its unsigned transaction '
+        'requires $expected',
+      );
     }
   }
 }

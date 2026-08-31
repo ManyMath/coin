@@ -282,6 +282,36 @@ void main() {
       expect(restored.unsignedTx!.outputs[1].value,
           equals(BigInt.from(100000000)));
     });
+
+    test('parser requires exactly one map per input and output', () {
+      final tx = Tx(
+        inputs: [
+          RawInput(
+            prevOut: Outpoint(txid: Uint8List(32)..[0] = 1, vout: 0),
+          ),
+        ],
+        outputs: [
+          TxOutput(value: BigInt.one, scriptPubKey: Uint8List(0)),
+        ],
+      );
+      final sections = PsbtCodec.decode(PartialTxV1(unsignedTx: tx).toBytes());
+      while (sections.length < 3) {
+        sections.add(<PsbtKeyValue>[]);
+      }
+
+      final missing = [for (final section in sections.take(2)) section];
+      final extra = [for (final section in sections) section, <PsbtKeyValue>[]];
+      for (final malformed in [missing, extra]) {
+        expect(
+          () => PartialTxV1.fromBytes(PsbtCodec.encode(malformed)),
+          throwsA(isA<FormatException>().having(
+            (error) => error.message,
+            'message',
+            contains('map count'),
+          )),
+        );
+      }
+    });
   });
 
   group('PartialTxV1 addInput and addOutput', () {
