@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.2.1
+
+### Fixed: Schnorr/secp256k1 input validation and PSBT v0 map counts
+
+**BIP-340 Schnorr (pure-Dart backend and public API).** Malformed signing
+inputs were not rejected consistently: a zero or out-of-range secret key, a
+non-32-byte message, or wrongly-sized auxiliary randomness could be hashed
+or negated into a signature that does not commit to the supplied input.
+`SchnorrSig.sign` and `SchnorrSig.verify` now validate the message, secret
+key, and auxiliary randomness up front and throw `ArgumentError`; the
+pure-Dart gate also rejects x-only public keys with x >= the field size and
+candidate points that fail the lift-x square-root check, and each produced
+signature is self-verified before it is returned.
+
+**PSBT v0 (BIP-174).** Parsing no longer accepts a number of input/output maps
+inconsistent with the unsigned transaction: `fromBytes` requires one global
+map plus one map per unsigned-transaction input and output, and serialization
+builds and pads its maps from the transaction's authoritative input/output
+counts, failing closed on excess instead of producing an invalid PSBT.
+
+**Who is affected:** anyone using 0.2.0 to verify BIP-340 signatures or sign
+with supplied key material, and anyone parsing or building PSBT v0
+documents. Verification results for well-formed inputs are unchanged.
+
+**What to do:** upgrade. No API or migration changes are required.
+
+Regression coverage: BIP-340 signing-input rejection cases and the official
+BIP-340 verification-failure vectors (indices 6-14, including x-only pubkey
+at the field size), and PSBT v0 missing/extra-map parse rejections.
+
 ## 0.2.0
 
 ### Fixed: taproot output keys and addresses were wrong for odd-Y internal keys
