@@ -12,6 +12,24 @@ import 'psbt_types.dart';
 
 /// BIP-174 PSBT version 0 implementation.
 class PartialTxV1 implements PartialTx {
+  // BIP-174 singleton key types: the key is the type byte itself. Any
+  // trailing key data on these types is a format error.
+  static const _globalKeydataLessTypes = <int>{0x00};
+  static const _inputKeydataLessTypes = <int>{
+    0x00, 0x01, 0x03, 0x04, 0x05, 0x07, 0x08,
+  };
+  static const _outputKeydataLessTypes = <int>{0x00, 0x01};
+
+  static void _requireNoKeyData(Uint8List key, Set<int> keydataLessTypes) {
+    if (key.length > 1 && keydataLessTypes.contains(key[0])) {
+      throw FormatException(
+        'Invalid PSBT: key type 0x'
+        '${key[0].toRadixString(16).padLeft(2, '0')} '
+        'must not have key data',
+      );
+    }
+  }
+
   Tx? _unsignedTx;
 
   /// Sections: [global, input0, ..., inputN, output0, ..., outputN].
@@ -28,6 +46,10 @@ class PartialTxV1 implements PartialTx {
     }
 
     final global = sections[0];
+    // BIP-174: the unsigned tx key must be the 1-byte type, no key data.
+    for (final kv in global) {
+      _requireNoKeyData(kv.key, _globalKeydataLessTypes);
+    }
     Tx? unsignedTx;
     for (final kv in global) {
       if (kv.key.isNotEmpty &&
@@ -49,6 +71,16 @@ class PartialTxV1 implements PartialTx {
           '(1 global + $inputCount input + $outputCount output), got '
           '${sections.length}',
         );
+      }
+      for (var i = 0; i < inputCount; i++) {
+        for (final kv in sections[1 + i]) {
+          _requireNoKeyData(kv.key, _inputKeydataLessTypes);
+        }
+      }
+      for (var i = 0; i < outputCount; i++) {
+        for (final kv in sections[1 + inputCount + i]) {
+          _requireNoKeyData(kv.key, _outputKeydataLessTypes);
+        }
       }
     }
 

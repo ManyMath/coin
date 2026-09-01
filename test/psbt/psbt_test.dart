@@ -475,4 +475,100 @@ void main() {
       expect(parsedTx.outputs[0].value, equals(BigInt.from(10000)));
     });
   });
+
+  group('PartialTxV1 singleton key key-data validation', () {
+    Tx buildUnsignedTx() => Tx(
+          version: 2,
+          inputs: [
+            RawInput(
+              prevOut: Outpoint(txid: Uint8List(32)..[0] = 0x42, vout: 0),
+              sequence: 0xffffffff,
+            ),
+          ],
+          outputs: [
+            TxOutput(
+              value: BigInt.from(1000),
+              scriptPubKey:
+                  Uint8List.fromList([0x00, 0x14, ...List.filled(20, 0x11)]),
+            ),
+          ],
+          locktime: 0,
+        );
+
+    PsbtKeyValue kv(List<int> key, [List<int> value = const [0x00]]) =>
+        PsbtKeyValue(
+          key: Uint8List.fromList(key),
+          value: Uint8List.fromList(value),
+        );
+
+    Uint8List buildPsbt({
+      List<PsbtKeyValue>? globalKvs,
+      List<PsbtKeyValue> inputKvs = const [],
+      List<PsbtKeyValue> outputKvs = const [],
+    }) {
+      final global = globalKvs ??
+          [
+            PsbtKeyValue(
+              key: Uint8List.fromList([PsbtGlobal.unsignedTx.keyType]),
+              value: buildUnsignedTx().toBytes(),
+            ),
+          ];
+      return PsbtCodec.encode([global, inputKvs, outputKvs]);
+    }
+
+    test('rejects unsigned tx key with trailing key data', () {
+      final bytes = buildPsbt(
+        globalKvs: [kv([0x00, 0x99], buildUnsignedTx().toBytes())],
+      );
+      expect(() => PartialTxV1.fromBytes(bytes), throwsFormatException);
+    });
+
+    test('rejects aliased unsigned tx key next to the valid one', () {
+      final txBytes = buildUnsignedTx().toBytes();
+      final bytes = buildPsbt(
+        globalKvs: [kv([0x00], txBytes), kv([0x00, 0x99], txBytes)],
+      );
+      expect(() => PartialTxV1.fromBytes(bytes), throwsFormatException);
+    });
+
+    test('rejects key data on keydata-less input key types', () {
+      for (final type in [0x00, 0x01, 0x03, 0x04, 0x05, 0x07, 0x08]) {
+        final bytes = buildPsbt(inputKvs: [kv([type, 0x99])]);
+        expect(
+          () => PartialTxV1.fromBytes(bytes),
+          throwsFormatException,
+          reason: 'input key type 0x${type.toRadixString(16)}',
+        );
+      }
+    });
+
+    test('rejects key data on keydata-less output key types', () {
+      for (final type in [0x00, 0x01]) {
+        final bytes = buildPsbt(outputKvs: [kv([type, 0x99])]);
+        expect(
+          () => PartialTxV1.fromBytes(bytes),
+          throwsFormatException,
+          reason: 'output key type 0x${type.toRadixString(16)}',
+        );
+      }
+    });
+
+    test('accepts key data on keydata-bearing and unknown key types', () {
+      final bytes = buildPsbt(
+        inputKvs: [
+          kv([0x02, ...List.filled(33, 0x02)], [0x30, 0x44]), // partial sig
+          kv([0x06, ...List.filled(33, 0x03)], List.filled(4, 0x00)), // bip32
+          kv([0xfc, 0xaa], [0x01]), // proprietary
+          kv([0xee, 0xbb], [0x02]), // unknown type
+        ],
+        outputKvs: [
+          kv([0x02, ...List.filled(33, 0x02)], List.filled(4, 0x00)), // bip32
+          kv([0xfc, 0xcc], [0x03]), // proprietary
+        ],
+      );
+      final parsed = PartialTxV1.fromBytes(bytes);
+      expect(parsed.inputCount, 1);
+      expect(parsed.outputCount, 1);
+    });
+  });
 }
