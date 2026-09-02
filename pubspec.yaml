@@ -1,5 +1,5 @@
 name: coin
-version: 0.2.1
+version: 0.2.2
 description: >-
   Cross-platform multi-coin cryptocurrency toolkit: Monero, Bitcoin, EVM.
   BIP-32/39/44 HD keys, Schnorr/ECDSA signing, PSBT, BIP-47, MuSig2, ABI codec,

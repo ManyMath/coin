@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.2.2
+
+### Fixed: PSBT v0 singleton-key validation and a VaultKeeper initialization race
+
+**PSBT v0 (BIP-174).** Key types defined without key data (the unsigned
+transaction, non-witness and witness UTXOs, sighash types, redeem and
+witness scripts, final scriptSig and scriptWitness) must appear as the
+single type byte. A key with trailing data is byte-distinct from the plain
+key, so it slipped past the duplicate-key check and could attach a second,
+conflicting value to the same field. `PartialTxV1.fromBytes` now rejects
+such keys with a `FormatException`.
+
+**VaultKeeper.** Two concurrent first calls to `VaultKeeper.initialize()`
+could both pass the initialization guard before either finished, building
+the crypto backends twice and letting the later-finishing call overwrite
+the vault; a `reset()` during an in-flight initialization could also
+resurrect cleared state. Initialization is now shared through one in-flight
+future, and a stale result is not published after `reset()`.
+
+**Who is affected:** anyone parsing externally supplied PSBT v0 data, and
+any application that calls `VaultKeeper.initialize()` from concurrent
+callers or calls `reset()` while initialization is in flight.
+
 ## 0.2.1
 
 ### Fixed: Schnorr/secp256k1 input validation and PSBT v0 map counts
